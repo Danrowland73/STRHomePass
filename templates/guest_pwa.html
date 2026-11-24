@@ -1,0 +1,2966 @@
+{% extends "base.html" %}
+
+{% block title %}{{ label }} — {{ app_name }}{% endblock %}
+
+{% block viewport %}width=device-width, initial-scale=1.0, viewport-fit=cover{% endblock %}
+
+{% block head_extra %}
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="{{ brand_bg }}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{ brand_bg_dark }}" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="{{ base_path }}/g/{{ slug }}/manifest.json" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="{{ base_path }}/static/icons/icon-192.png?v={{ build_version }}">
+{% endblock %}
+
+{% block fouc_extra %}
+  // Detect PWA standalone mode (matches Frigate pattern)
+  var isPWA = ('standalone' in navigator && navigator.standalone) ||
+              window.matchMedia('(display-mode: standalone)').matches;
+  if (isPWA) document.documentElement.classList.add('pwa');
+{% endblock %}
+
+{% block head_styles %}
+<style>
+  /* The tinted round shape that carries an entity's icon, after the Mushroom
+     cards. Its colour says what the entity is doing (entityColor() in
+     static/domains.js). It is decoration, not a control: the toggle, or the
+     card itself where the card is tappable, is what acts. */
+  .entity-shape {
+    width: 42px; height: 42px; border-radius: 9999px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: background-color .3s ease;
+  }
+  .entity-shape .material-symbols-outlined {
+    font-size: 22px;
+    transition: color .3s ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .entity-shape, .entity-shape .material-symbols-outlined { transition: none; }
+  }
+  @keyframes cardPulse { 0% { opacity: .7; } 100% { opacity: 1; } }
+  .pulse { animation: cardPulse .4s ease-out; }
+  @keyframes pingDot { 0% { transform: scale(1); opacity: 1; } 75%, 100% { transform: scale(2); opacity: 0; } }
+  .ping-dot { position: relative; }
+  .ping-dot::after {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: currentColor; animation: pingDot 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  .toggle-track {
+    position: relative; width: 51px; height: 31px; border-radius: 16px;
+    background: var(--hex-muted-ui); cursor: pointer; transition: background .25s ease; flex-shrink: 0;
+  }
+  .dark .toggle-track { background: var(--hex-muted-dark); }
+  .toggle-track::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 27px; height: 27px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.15);
+    transition: transform .25s ease;
+  }
+  .toggle-track.on { background: var(--hex-primary); }
+  .toggle-track.on::after { transform: translateX(20px); }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; height: 6px;
+    background: var(--hex-muted-ui); border-radius: 3px; outline: none; flex: 1;
+  }
+  .dark input[type="range"] { background: var(--hex-muted-dark); }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 22px; height: 22px;
+    border-radius: 50%; background: #fff; border: 1px solid var(--hex-muted-ui);
+    box-shadow: 0 1px 4px rgba(0,0,0,.15); cursor: pointer;
+  }
+  /* Hue around the rim, saturation towards the middle. Value is deliberately
+     absent — brightness stays the slider's job. */
+  .color-wheel {
+    background:
+      radial-gradient(circle at center, #fff 0%, rgba(255,255,255,0) 100%),
+      conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+    box-shadow: 0 1px 4px rgba(0,0,0,.15);
+    cursor: pointer; touch-action: none;
+  }
+  .color-wheel-thumb {
+    width: 22px; height: 22px; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.15);
+    transform: translate(-50%, -50%); pointer-events: none;
+  }
+  /* Warm-to-cool track. Taller than the brightness slider so the gradient
+     reads as a temperature; the gradient itself is set inline from the bulb's
+     own kelvin range. */
+  input[type="range"].color-temp-range {
+    height: 10px; border-radius: 5px; border: 1px solid var(--hex-muted-ui);
+  }
+  .dark input[type="range"].color-temp-range { border-color: var(--hex-muted-dark); }
+  .color-swatch {
+    width: 26px; height: 26px; border-radius: 50%; padding: 0; flex-shrink: 0;
+    border: 1px solid var(--hex-muted-ui); cursor: pointer;
+  }
+  .dark .color-swatch { border-color: var(--hex-muted-dark); }
+  @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .sheet-animate { animation: sheetUp .25s ease-out; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin .7s linear infinite; }
+  button:focus-visible, input:focus-visible, select:focus-visible, [role="switch"]:focus-visible, [tabindex]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgb(var(--color-primary) / 0.5);
+  }
+  /* PWA standalone mode — adjust layout for missing browser chrome.
+     Matches Frigate's isPWA pattern: extra bottom padding for iOS home
+     indicator, top safe area for notch when status bar is translucent. */
+  .pwa body { padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem); }
+  .pwa .sticky { padding-top: env(safe-area-inset-top); }
+  .pwa #cards-container { padding-bottom: 4rem; }
+  .pwa #sheet-backdrop > div { padding-bottom: calc(1.5rem + env(safe-area-inset-bottom) + 0.5rem); }
+  .pwa #expired-overlay { padding-bottom: calc(2rem + env(safe-area-inset-bottom)); }
+  .pwa #info-footer { padding-bottom: 4rem; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(8px); } }
+  .toast-in { animation: toastIn .25s ease-out; }
+  .toast-out { animation: toastOut .2s ease-in forwards; }
+  /* A section heading's chevron points down while the section shows and turns
+     to point at the heading text while it is shut. */
+  .group-chevron { transition: transform .15s ease-out; }
+  .group-toggle[aria-expanded="false"] .group-chevron { transform: rotate(-90deg); }
+  @media (prefers-reduced-motion: reduce) { .group-chevron { transition: none; } }
+  /* The welcome and info text: the admin's own line breaks kept, and a long
+     URL broken anywhere rather than pushing the page sideways. The links in
+     it come from app/linkify.py as bare <a> tags, so they are styled here. */
+  .info-text { white-space: pre-line; overflow-wrap: anywhere; }
+  .info-text a { color: rgb(var(--color-primary)); text-decoration: underline; text-underline-offset: 2px; }
+  /* The formatting tags app/richtext.py lets through. Tailwind's preflight
+     strips headings, lists and bold of their look, so it is put back here,
+     sized for a card rather than a document. */
+  .info-text h1, .info-text h2, .info-text h3,
+  .info-text h4, .info-text h5, .info-text h6 { font-weight: 700; line-height: 1.3; margin: .375rem 0 .125rem; }
+  .info-text h1 { font-size: 1.25rem; }
+  .info-text h2 { font-size: 1.125rem; }
+  .info-text h3 { font-size: 1rem; }
+  .info-text h4 { font-size: .9375rem; }
+  .info-text h5 { font-size: .875rem; }
+  .info-text h6 { font-size: .875rem; font-weight: 600; }
+  .info-text > :first-child { margin-top: 0; }
+  .info-text b, .info-text strong { font-weight: 700; }
+  .info-text i, .info-text em { font-style: italic; }
+  .info-text u { text-decoration: underline; }
+  .info-text s { text-decoration: line-through; }
+  .info-text small { font-size: .8em; }
+  .info-text mark { background: #fde68a; color: #1c1917; border-radius: 2px; padding: 0 .125rem; }
+  .dark .info-text mark { background: #a16207; color: #fefce8; }
+  /* Line breaks typed between the items of a list are layout, not lines: the
+     list itself sets them, and the item's own text keeps its breaks. */
+  .info-text ul, .info-text ol { white-space: normal; margin: .25rem 0; padding-left: 1.25rem; }
+  .info-text ul { list-style: disc; }
+  .info-text ol { list-style: decimal; }
+  .info-text ul ul { list-style: circle; }
+  .info-text li { white-space: pre-line; }
+  /* The top card opens and shuts on a tap. Shut, it is one quiet line: the
+     first line of the text, rendered by the server with its formatting, with
+     the full text hidden. No transition, so nothing moves for a guest who asked
+     for reduced motion. */
+  .info-row { display: flex; align-items: flex-start; gap: .5rem; padding: .75rem .5rem .75rem 1rem; }
+  #info-card[data-collapsed="true"] .info-row { align-items: center; padding-top: .125rem; padding-bottom: .125rem; }
+  .info-line { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #info-card[data-collapsed="true"] #info-card-text { display: none; }
+  #info-card[data-collapsed="true"] .info-line { display: block; }
+  /* The line can be a heading or a list item: it shares the card's .info-text
+     look, but every block in it stays on one line and ends in an ellipsis,
+     with no margins, and a list's bullet sits inside the line so it is never
+     clipped by the overflow. */
+  #info-card-line > *, #info-card-line li { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #info-card-line ul, #info-card-line ol { padding-left: 0; list-style-position: inside; }
+  .info-toggle { min-width: 44px; min-height: 44px; margin: -.5rem 0; }
+  #info-card[data-collapsed="true"] .info-toggle { margin: 0; }
+  #info-card[data-collapsed="false"] #info-more,
+  #info-card[data-collapsed="true"] #info-collapse { display: none; }
+</style>
+{% endblock %}
+
+{% block body_attrs %}class="bg-bg-light dark:bg-bg-dark text-fg-light dark:text-fg-dark font-sans antialiased min-h-dvh"
+  data-theme-offset="2"
+  style="padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);"{% endblock %}
+
+{% block body %}
+<noscript>
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem;text-align:center;font-family:sans-serif;">
+    <p>{{ t('page.js_required') }}</p>
+  </div>
+</noscript>
+
+<!-- Header -->
+<header class="sticky top-0 z-20 bg-surface-light/95 dark:bg-surface-dark/95 border-b border-border-light dark:border-border-dark backdrop-blur-lg">
+  <div class="px-4 py-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        {# A link's own logo, title and eyebrow replace the icon, label and app name
+           (app/branding.py page_context). Each falls back to the usual part when
+           unset, and the row grows taller as they need. #}
+        {% if branding and branding.logo_url %}
+        <img src="{{ branding.logo_url }}" alt="" decoding="async"
+             style="width: {{ branding.logo_width }}px; max-width: {{ branding.logo_max_width }}%; aspect-ratio: {{ branding.logo_ratio }};"
+             class="h-auto object-contain flex-shrink-0">
+        {% else %}
+        <div class="w-10 h-10 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
+          <span aria-hidden="true" class="material-symbols-outlined text-accent text-xl">person</span>
+        </div>
+        {% endif %}
+        <div class="min-w-0">
+          {% if branding and branding.title %}
+          <div style="font-size: {{ branding.title_size }}px" class="font-serif leading-tight break-words">{{ branding.title }}</div>
+          {% else %}
+          <div class="text-sm font-serif truncate">{{ label }}</div>
+          {% endif %}
+          {% if branding and branding.eyebrow %}
+          <div style="font-size: {{ branding.eyebrow_size }}px" class="text-accent font-display font-medium tracking-wide break-words">{{ branding.eyebrow }}</div>
+          {% else %}
+          <div class="text-[10px] text-muted font-mono uppercase tracking-widest">{{ app_name }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <!-- Theme Toggle -->
+        <div class="theme-toggle relative flex bg-soot/[0.04] dark:bg-white/[0.06] rounded-full p-[2px]">
+          <div class="theme-slider absolute top-[2px] h-[calc(100%-4px)] rounded-full bg-white dark:bg-white/15 shadow-sm transition-all duration-200 ease-out"></div>
+          <button data-theme="system" data-action="set-theme" aria-label="{{ t('page.theme.system') }}" class="theme-btn relative z-10 w-6 h-6 flex items-center justify-center rounded-full">
+            <span aria-hidden="true" class="material-symbols-outlined text-[14px]">brightness_auto</span>
+          </button>
+          <button data-theme="light" data-action="set-theme" aria-label="{{ t('page.theme.light') }}" class="theme-btn relative z-10 w-6 h-6 flex items-center justify-center rounded-full">
+            <span aria-hidden="true" class="material-symbols-outlined text-[14px]">light_mode</span>
+          </button>
+          <button data-theme="dark" data-action="set-theme" aria-label="{{ t('page.theme.dark') }}" class="theme-btn relative z-10 w-6 h-6 flex items-center justify-center rounded-full">
+            <span aria-hidden="true" class="material-symbols-outlined text-[14px]">dark_mode</span>
+          </button>
+        </div>
+        {# Nothing is connected while the link is pending — its stream carries
+           lifecycle events only — so the badge is not rendered rather than
+           left showing "Live" over a preview. #}
+        {% if not pending %}
+        <span id="conn-badge" aria-live="polite" class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-soot/5 dark:bg-white/5 text-muted">
+          <span class="w-1.5 h-1.5 rounded-full bg-current" id="conn-dot"></span>
+          <span id="conn-text">{{ t('conn.connecting') }}</span>
+        </span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</header>
+
+{# The global welcome text and, unless it is flagged for the footer, this
+   link's info text. Built and sanitised by app/richtext.py; the server leaves it
+   out entirely when there is nothing to say. The text sits right against its
+   tags because the container keeps line breaks. #}
+{% if info_top_html %}
+<section id="info-card" data-info-hash="{{ info_top_hash }}" data-collapsed="false" aria-label="{{ t('page.info.label') }}" class="max-w-xl mx-auto px-4 pt-3">
+  <div class="info-row bg-surface-light dark:bg-surface-dark rounded-2xl shadow-card border border-border-light dark:border-border-dark">
+    <div id="info-card-text" class="info-text flex-1 min-w-0 text-sm leading-relaxed">{{ info_top_html }}</div>
+    {# Shown instead of the text while the card is shut: its first line,
+       formatted and linked like the card (built by app/richtext.py), or the
+       card's name when the text has tags and nothing to read. #}
+    <div id="info-card-line" class="info-text info-line flex-1 min-w-0 text-sm leading-relaxed">{{ info_top_line or t('page.info.label') }}</div>
+    {# Each button is only ever shown in one state, so its aria-expanded
+       never changes: Collapse is visible while the text is open, More while
+       it is shut. CSS picks which from data-collapsed. #}
+    <button type="button" id="info-collapse" data-action="info-collapse" aria-controls="info-card-text" aria-expanded="true"
+            class="info-toggle flex-shrink-0 inline-flex items-center justify-center gap-1 px-2 rounded-xl text-xs font-display font-medium text-muted hover:bg-soot/5 dark:hover:bg-white/5">
+      <span aria-hidden="true" class="material-symbols-outlined text-lg">expand_less</span>{{ t('page.info.collapse') }}
+    </button>
+    <button type="button" id="info-more" data-action="info-more" aria-controls="info-card-text" aria-expanded="false"
+            class="info-toggle flex-shrink-0 inline-flex items-center justify-center gap-1 px-2 rounded-xl text-xs font-display font-medium text-muted hover:bg-soot/5 dark:hover:bg-white/5">
+      <span aria-hidden="true" class="material-symbols-outlined text-lg">expand_more</span>{{ t('page.info.more') }}
+    </button>
+  </div>
+</section>
+{# Right after the card rather than in the page script at the bottom, so a
+   guest who collapsed the card earlier never sees it drawn open first: the
+   parser runs this before it reaches anything below, and before the page's
+   first paint. Tap only; nothing here waits on a timer. #}
+<script nonce="{{ csp_nonce }}">
+// Per link, never the token id: the slug is already in the address bar.
+const INFO_KEY = 'hp-info:' + {{ slug | tojson }};
+
+// localStorage can be missing or throw (private mode, storage blocked); the
+// card then still opens and shuts, it just forgets on the next visit.
+function infoStorage(use) {
+  try { return use(window.localStorage); } catch { return null; }
+}
+
+function setInfoCollapsed(collapsed, moveFocus) {
+  const card = document.getElementById('info-card');
+  card.dataset.collapsed = String(collapsed);
+  if (moveFocus) document.getElementById(collapsed ? 'info-more' : 'info-collapse').focus();
+}
+
+function collapseInfoCard() {
+  setInfoCollapsed(true, true);
+  const hash = document.getElementById('info-card').dataset.infoHash;
+  infoStorage(s => s.setItem(INFO_KEY, hash));
+}
+
+function expandInfoCard() {
+  setInfoCollapsed(false, true);
+  infoStorage(s => s.removeItem(INFO_KEY));
+}
+
+// The stored value is the hash of the text the guest shut. Edited text has a
+// new hash, so it opens again and the stale entry is dropped.
+function applyStoredInfoState() {
+  const stored = infoStorage(s => s.getItem(INFO_KEY));
+  if (stored == null) return;
+  if (stored === document.getElementById('info-card').dataset.infoHash) {
+    setInfoCollapsed(true, false);
+  } else {
+    setInfoCollapsed(false, false);
+    infoStorage(s => s.removeItem(INFO_KEY));
+  }
+}
+
+applyStoredInfoState();
+</script>
+{% endif %}
+
+{# Persistent use counter. Rendered only when the admin switched it on for a
+   use-limited link (uses_remaining is None otherwise). The text is filled in by
+   renderUsesLeft() so it shares the plural rules of the toast, and is refreshed
+   after every command from the server's own count. #}
+{% if uses_remaining is not none %}
+<div class="max-w-xl mx-auto px-4 pt-3">
+  <div id="uses-left" data-uses="{{ uses_remaining }}" role="status" aria-live="polite"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono bg-accent/15 text-accent">
+    <span aria-hidden="true" class="material-symbols-outlined text-[14px]">touch_app</span>
+    <span id="uses-left-text"></span>
+  </div>
+</div>
+{% endif %}
+
+<!-- Install banner (shown only on mobile browsers, not in standalone mode) -->
+<div id="install-banner" class="hidden max-w-xl mx-auto px-4 pt-3">
+  <div class="bg-surface-light dark:bg-surface-dark rounded-2xl p-4 shadow-card border border-border-light dark:border-border-dark flex items-start gap-3">
+    <div class="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+      <span aria-hidden="true" class="material-symbols-outlined text-accent">install_mobile</span>
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-semibold">{{ t('page.install.title') }}</div>
+      <p id="install-instructions" class="text-xs text-muted mt-0.5 leading-relaxed"></p>
+    </div>
+    <button data-action="dismiss-install" aria-label="{{ t('page.install.dismiss') }}" class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full hover:bg-soot/5 dark:hover:bg-white/5 -mt-0.5 -mr-1">
+      <span aria-hidden="true" class="material-symbols-outlined text-muted text-lg">close</span>
+    </button>
+  </div>
+</div>
+
+<!-- Cards container -->
+<main id="cards-container" class="max-w-xl mx-auto px-4 pt-3 pb-8">
+  <div class="flex flex-col items-center justify-center py-16 text-muted">
+    <div class="w-6 h-6 border-2 border-border-light dark:border-border-dark border-t-accent rounded-full spinner mb-3"></div>
+    <span class="text-sm">{{ t('page.devices.loading') }}</span>
+  </div>
+</main>
+
+{# This link's info text when the admin moved it to the footer. A sibling of
+   <main>, never inside it: the script replaces everything in there. Never
+   rendered on a pending page, so it cannot sit under the pending banner. #}
+{% if info_footer_html %}
+<footer id="info-footer" aria-label="{{ t('page.info.label') }}" class="max-w-xl mx-auto px-4 pb-8">
+  <div class="bg-surface-light dark:bg-surface-dark rounded-2xl p-4 shadow-card border border-border-light dark:border-border-dark">
+    <div id="info-footer-text" class="info-text text-sm leading-relaxed">{{ info_footer_html }}</div>
+  </div>
+</footer>
+{% endif %}
+
+<!-- Expired overlay -->
+<div id="expired-overlay" aria-live="assertive" class="hidden fixed inset-0 z-50 bg-bg-light dark:bg-bg-dark flex flex-col items-center justify-center text-center p-8 gap-4">
+  <div class="w-20 h-20 rounded-full bg-soot/5 dark:bg-white/5 flex items-center justify-center">
+    <span aria-hidden="true" class="material-symbols-outlined text-4xl text-muted">timer_off</span>
+  </div>
+  <h2 id="expired-title" class="text-2xl font-serif">{{ t('page.overlay.expired_title') }}</h2>
+  <p class="text-muted max-w-xs"><span id="expired-body">{{ t('page.overlay.expired_body') }}</span> {{ contact_message }}</p>
+</div>
+
+{% if pending %}
+<!-- Scheduled-start banner. Docked and compact rather than a full-screen
+     blocker: the cards behind it are the guest's real ones, greyed out, so the
+     link can be shared ahead of time and still show what it will open. The
+     same banner covers the gaps between weekly access windows; only the
+     wording changes with pending_reason. -->
+<div id="pending-banner" aria-live="polite" class="fixed bottom-0 inset-x-0 z-30 bg-surface-light dark:bg-surface-dark border-t border-border-light dark:border-border-dark shadow-card">
+  <div class="max-w-xl mx-auto px-4 py-3 flex items-center gap-3" style="padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));">
+    <div class="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center flex-shrink-0">
+      <span aria-hidden="true" class="material-symbols-outlined text-accent">schedule</span>
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-semibold">
+        {%- if pending_reason == 'start' %}{{ t('page.pending.start') }}
+        {%- elif pending_reason == 'window' %}{{ t('page.pending.window') }}
+        {%- elif pending_reason == 'none' %}{{ t('page.pending.none') }}
+        {%- else %}{{ t('page.pending.unknown') }}{% endif -%}
+      </div>
+      {% if starts_at %}
+      <div class="text-xs text-muted">{% if pending_reason == 'window' %}{{ t('page.pending.next_in') }}{% else %}{{ t('page.pending.opens_in') }}{% endif %} <span id="pending-timer" class="font-mono font-bold tabular-nums text-accent"></span> · <span id="pending-when"></span></div>
+      {% elif pending_reason == 'none' %}
+      <div class="text-xs text-muted">{{ t('page.pending.none_body') }} {{ contact_message }}</div>
+      {% else %}
+      <div class="text-xs text-muted">{{ t('page.pending.retry') }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Confirm bottom sheet -->
+<div class="fixed inset-0 z-40 hidden items-end justify-center bg-soot/40 dark:bg-black/50 backdrop-blur-sm" id="sheet-backdrop">
+  <div class="sheet-animate bg-surface-light dark:bg-surface-dark rounded-t-2xl p-6 w-full max-w-lg text-center" role="dialog" aria-modal="true" aria-labelledby="sheet-title" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));">
+    <h3 class="text-lg font-serif mb-1.5" id="sheet-title">{{ t('page.sheet.confirm') }}</h3>
+    <p class="text-sm text-muted mb-5" id="sheet-body"></p>
+    <!-- Shown only for alarm panels that report a code_format. The code lives in
+         this field and the command body and nowhere else — it is cleared when the
+         sheet closes and never written to a log. -->
+    <div class="hidden mb-5" id="sheet-code-wrap">
+      <input type="password" id="sheet-code" autocomplete="off" inputmode="numeric" placeholder="{{ t('page.sheet.code_placeholder') }}" aria-label="{{ t('page.sheet.code_label') }}"
+        class="w-full py-3 px-4 rounded-xl border border-border-light dark:border-border-dark bg-bg-light dark:bg-bg-dark text-center text-lg font-mono tracking-[0.3em] outline-none focus:border-primary">
+    </div>
+    <!-- Colour / White switch. Drawn only when the bulb does both: HA's colour
+         modes are mutually exclusive, so the two widgets take turns instead of
+         stacking and implying they blend. -->
+    <div class="hidden mb-4 gap-1 p-1 rounded-xl bg-soot/5 dark:bg-white/5" id="sheet-color-tabs"
+      role="group" aria-label="{{ t('page.color.mode_group') }}">
+      <button type="button" id="sheet-tab-color" data-action="color-tab" data-tab="color" aria-pressed="true"
+        class="flex-1 py-2 rounded-lg text-sm font-display font-semibold">{{ t('color.colour') }}</button>
+      <button type="button" id="sheet-tab-white" data-action="color-tab" data-tab="white" aria-pressed="false"
+        class="flex-1 py-2 rounded-lg text-sm font-display font-semibold">{{ t('page.color.white') }}</button>
+    </div>
+    <!-- Shown only for colour-capable lights the token opted in. The wheel
+         applies live, so this sheet has nothing to confirm: Confirm is hidden
+         and Cancel becomes Done while it is up. -->
+    <div class="hidden mb-5" id="sheet-wheel-wrap">
+      <div class="color-wheel relative rounded-full mx-auto" id="sheet-wheel"
+        style="width:220px;height:220px;"
+        role="slider" aria-label="{{ t('page.color.hue') }}" aria-valuemin="0" aria-valuemax="359" aria-valuenow="0"
+        tabindex="0" data-wheel-action="color">
+        <div class="color-wheel-thumb absolute rounded-full" id="sheet-wheel-thumb"></div>
+      </div>
+    </div>
+    <!-- Warm-to-cool white, for bulbs that report color_temp. The track
+         gradient is built from the bulb's own min/max kelvin so both ends show
+         what this lamp can actually do. -->
+    <div class="hidden mb-5" id="sheet-temp-wrap">
+      <div class="flex items-center gap-3">
+        <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">local_fire_department</span>
+        <input type="range" class="color-temp-range" id="sheet-temp" min="2000" max="6535" value="2700"
+          aria-label="{{ t('page.color.temperature') }}" data-range-action="color-temp"
+          data-display-id="sheet-temp-val" data-display-suffix="K">
+        <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">ac_unit</span>
+      </div>
+      <p class="text-xs text-muted mt-2 tabular-nums font-mono" id="sheet-temp-val">2700K</p>
+    </div>
+    <div class="flex gap-3">
+      <button data-action="close-sheet" id="sheet-cancel" class="flex-1 py-3.5 rounded-xl bg-soot/5 dark:bg-white/5 text-sm font-display font-semibold">{{ t('sheet.cancel') }}</button>
+      <button id="sheet-ok" class="flex-1 py-3.5 rounded-xl bg-primary text-on-primary text-sm font-display font-semibold">{{ t('page.sheet.confirm') }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sensor history sheet. Its own dialog rather than the confirm sheet's: it
+     holds a chart that outlives a single tap, and closing it must not run the
+     confirm sheet's teardown of codes and colour widgets. -->
+<div class="fixed inset-0 z-40 hidden items-end justify-center bg-soot/40 dark:bg-black/50 backdrop-blur-sm" id="history-backdrop">
+  <div class="sheet-animate bg-surface-light dark:bg-surface-dark rounded-t-2xl p-5 w-full max-w-lg" role="dialog" aria-modal="true" aria-labelledby="history-title" style="padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));">
+    <div class="flex items-center justify-between gap-3 mb-3">
+      <h3 class="text-lg font-serif truncate min-w-0" id="history-title"></h3>
+      <button type="button" data-action="close-history" aria-label="{{ t('page.history.close') }}"
+        class="w-9 h-9 flex items-center justify-center rounded-full bg-soot/5 dark:bg-white/5 flex-shrink-0">
+        <span aria-hidden="true" class="material-symbols-outlined text-xl">close</span>
+      </button>
+    </div>
+    <div class="flex mb-3 gap-1 p-1 rounded-xl bg-soot/5 dark:bg-white/5" role="group" aria-label="{{ t('page.history.range') }}">
+      {% for hours in [6, 24, 168] %}
+      <button type="button" data-action="history-range" data-hours="{{ hours }}" aria-pressed="false"
+        class="flex-1 py-2 rounded-lg text-sm font-display font-semibold text-muted tabular-nums"></button>
+      {% endfor %}
+    </div>
+    <div id="history-chart" class="w-full overflow-hidden"></div>
+    <p id="history-readout" class="text-sm text-center mt-2 tabular-nums min-h-[1.25rem]"></p>
+    {# Only shown for a sensor that has others to be compared with: the rows are
+       the chart's legend and the switches that lay those sensors over it. The
+       list scrolls on its own, so a link with many of them keeps the chart on
+       screen; its padding is room for a row's focus ring, which the scrolling
+       would otherwise clip. #}
+    <div id="history-legend" class="mt-2 hidden">
+      <p class="text-xs text-muted">{{ t('page.history.compare') }}</p>
+      <div id="history-legend-rows" class="max-h-40 overflow-y-auto p-1 -m-1" role="group" aria-label="{{ t('page.history.compare') }}"></div>
+    </div>
+    <p id="history-status" class="text-sm text-muted text-center py-6 hidden" aria-live="polite"></p>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container" aria-live="polite" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[200] flex flex-col items-center gap-2"></div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ base_path }}/static/util.js?v={{ build_version }}"></script>
+<script src="{{ base_path }}/static/domains.js?v={{ build_version }}"></script>
+<script src="{{ base_path }}/static/theme.js?v={{ build_version }}"></script>
+<script nonce="{{ csp_nonce }}">
+// The guest's language and its strings, read by tr()/trn() in util.js. First,
+// so every line below — top-level constants included — can use them.
+const I18N = {{ i18n | tojson }};
+requestAnimationFrame(updateThemeToggles);
+
+const SLUG = {{ slug | tojson }};
+// Empty in standalone mode; under HA ingress the page is served from
+// /api/hassio_ingress/<token>/, so every guest API call has to carry the prefix
+// the same way the static asset tags above do.
+const BASE = {{ base_path | tojson }};
+// For assets the script loads itself, so they carry the same ?v= as the tags.
+const BUILD_VERSION = {{ build_version | tojson }};
+const EXPIRES_AT = {{ expires_at | tojson }};
+const NEVER_EXPIRES = {{ never_expires }};
+// True only when this token has at least one proximity-gated entity. Rendered
+// by the server, and the same flag guards the location block further down — an
+// ordinary token's page carries no copy of that block, so it cannot prompt for
+// a position or so much as name the browser API that supplies one.
+const REQUIRES_LOCATION = {{ requires_location | tojson }};
+// True only before a scheduled token's start time. The page then renders a
+// greyed-out preview built from the two constants below and never reaches for
+// /state, /command or either camera endpoint — all of which the server refuses
+// until the window opens anyway.
+const PENDING = {{ pending | tojson }};
+// When the link next works — the start time, or the next weekly window. Null
+// when nothing opens again before expiry, or the schedule could not be checked;
+// PENDING_REASON says which, and the banner has no countdown in either case.
+const STARTS_AT = {{ starts_at | tojson }};
+const PENDING_REASON = {{ pending_reason | tojson }};
+// Set only on a live page of a token with weekly windows: when the current
+// window shuts. The page reloads there into the countdown. The server refuses
+// every request after that moment regardless, and its stream says so too —
+// this is the belt for a tab whose stream is down.
+const WINDOW_CLOSES_AT = {{ window_closes_at | tojson }};
+const PREVIEW_ENTITY_IDS = {{ preview_entity_ids | tojson }};
+const PREVIEW_ENTITY_META = {{ preview_entity_meta | tojson }};
+const PREVIEW_GROUP_HEADINGS = {{ preview_group_headings | tojson }};
+// The countdown is measured against the server's clock, not the device's: a
+// phone a few minutes fast would otherwise reload early, be refused, and do it
+// again forever. The offset is taken once, at load.
+const CLOCK_OFFSET = {{ server_now | tojson }} - (Date.now() / 1000);
+let states = {};
+// Per-token overrides: { entity_id: {display_name, options, require_proximity} }
+let entityMeta = {};
+let entityOrder = [];
+// The admin's renamed and locked section headings: { group_key: {name, locked} }.
+let groupHeadings = {};
+// Group keys of the sections the guest has shut. Held for this page view only,
+// never stored: every load opens with every section showing, so a guest is
+// never left wondering where a control went.
+const collapsedGroups = new Set();
+let sheetCallback = null;
+let sseRetryCount = 0;
+
+// ── Expiry watchdog ──────────────────────────────────────────────────
+// Nothing about expiry is shown to the guest — no countdown, no "no
+// expiration" label. This only exists so a page left open when the token dies
+// flips to the expired screen instead of sitting there with stale controls.
+// The SSE token_expired event and the 410 on refresh cover the same ground;
+// this is the belt for when the stream is down.
+function checkExpiry() {
+  if (EXPIRES_AT >= NEVER_EXPIRES) return;
+  if (EXPIRES_AT - (Date.now() / 1000) > 0) return;
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  clearInterval(expiryInterval);
+  showExpired();
+}
+checkExpiry();
+let expiryInterval = setInterval(() => {
+  if (document.visibilityState === 'visible') checkExpiry();
+}, 60000);
+
+// ── Weekly window watchdog ───────────────────────────────────────────
+// Checked every few seconds rather than once a minute like expiry: a window
+// is a boundary the guest can see coming, and controls that stay lit for a
+// minute past it look broken. Measured against the server clock, as the
+// pending countdown is.
+if (!PENDING && WINDOW_CLOSES_AT) {
+  setInterval(() => {
+    if (WINDOW_CLOSES_AT - (Date.now() / 1000 + CLOCK_OFFSET) <= 0) {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      location.reload();
+    }
+  }, 5000);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const r = await fetch(`${BASE}/g/${SLUG}/state`);
+    if (r.status === 410) { showExpired(); return; }
+    if (r.status === 401) { showPinEntry(); return; }
+    if (await isDeviceRefusal(r)) { reloadForDevice(); return; }
+    if (!r.ok) throw new Error(tr('devices.load_error'));
+    const data = await r.json();
+    states = data.states;
+    entityOrder = data.entities;
+    entityMeta = data.entity_meta || {};
+    groupHeadings = data.group_headings || {};
+    renderAll();
+    connectSSE();
+  } catch (e) {
+    document.getElementById('cards-container').innerHTML =
+      `<div class="flex flex-col items-center py-16 text-primary text-sm"><span aria-hidden="true" class="material-symbols-outlined text-3xl mb-2">error</span>${esc(tr('devices.load_failed'))}<br><small class="text-muted">${esc(e.message)}</small></div>`;
+  }
+}
+
+// ── Scheduled start ──────────────────────────────────────────────────
+// Everything here runs instead of init(), never alongside it, so a pending
+// page opens exactly one stream and issues exactly zero state requests.
+
+// One neutral resting state per domain, so a card draws its usual shape
+// without implying anything about the real device. Anything not listed falls
+// through to 'unavailable'. Cameras are left out deliberately: that is what
+// makes buildCameraControls draw nothing, so the preview never asks for a
+// frame from an endpoint that would refuse it.
+const PREVIEW_STATES = {
+  light: 'off', switch: 'off', input_boolean: 'off', group: 'off', fan: 'off',
+  climate: 'off', lock: 'locked', cover: 'closed', media_player: 'idle',
+};
+
+// The HA friendly_name lives in state this page may not fetch yet, so the
+// entity id supplies one. A per-token display name still wins where the admin
+// set one, because displayName() checks the override first.
+function previewName(eid) {
+  return eid.split('.').slice(1).join('.').split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+let pendingInterval = null;
+let pendingEventSource = null;
+
+function startPending() {
+  entityOrder = PREVIEW_ENTITY_IDS;
+  entityMeta = PREVIEW_ENTITY_META;
+  groupHeadings = PREVIEW_GROUP_HEADINGS;
+  states = {};
+  for (const eid of entityOrder) {
+    states[eid] = {
+      entity_id: eid,
+      state: PREVIEW_STATES[eid.split('.')[0]] || 'unavailable',
+      attributes: { friendly_name: previewName(eid) },
+    };
+  }
+  renderAll();
+
+  const container = document.getElementById('cards-container');
+  container.classList.add('opacity-50', 'grayscale', 'pointer-events-none', 'select-none', 'pb-24');
+  // Scoped to the cards, not the page: the theme switcher in the header is
+  // still the guest's to use while they wait.
+  container.querySelectorAll('button, input, select').forEach(el => el.disabled = true);
+
+  connectPendingSSE();
+  if (!STARTS_AT) {
+    // Nothing to count down to. A schedule that could not be checked is
+    // asked again shortly; one with no openings left waits for an admin edit,
+    // which the stream delivers.
+    if (PENDING_REASON === 'unknown') setTimeout(() => location.reload(), 60000);
+    return;
+  }
+  // A guest days out wants the date, not a five-digit counter; both are shown.
+  // Between weekly windows the weekday is what they plan around, so it leads.
+  document.getElementById('pending-when').textContent = PENDING_REASON === 'window'
+    ? new Date(STARTS_AT * 1000).toLocaleString(uiLocale(), { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : new Date(STARTS_AT * 1000).toLocaleString(uiLocale(), { dateStyle: 'medium', timeStyle: 'short' });
+  updatePendingTimer();
+  pendingInterval = setInterval(updatePendingTimer, 1000);
+}
+
+function updatePendingTimer() {
+  const remaining = STARTS_AT - (Date.now() / 1000 + CLOCK_OFFSET);
+  if (remaining <= 0) { activatePending(); return; }
+  const d = Math.floor(remaining / 86400);
+  const h = Math.floor((remaining % 86400) / 3600);
+  const m = Math.floor((remaining % 3600) / 60);
+  const s = Math.floor(remaining % 60);
+  document.getElementById('pending-timer').textContent =
+    `${d ? tr('pending.days', { n: d }) + ' ' : ''}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// Reload rather than bring the page to life in place. The server is the only
+// thing that knows whether the window has opened, and a reload re-runs every
+// gate, records the page_load the preview deliberately skipped, and emits the
+// server-rendered blocks — the proximity one among them — that a pending page
+// is never served. It also makes preview placeholders surviving into a
+// live session impossible by construction. If the clock was somehow still
+// early, the reload lands back on the preview and the countdown resumes.
+function activatePending() {
+  clearInterval(pendingInterval);
+  if (pendingEventSource) { pendingEventSource.close(); pendingEventSource = null; }
+  location.reload();
+}
+
+// Lifecycle events only — there is no state_change listener here, and the
+// server does not send one to a pending stream either. The connection exists
+// to catch an admin's "Activate Now", and to catch a start time that arrived
+// while this tab was asleep and its own timer never fired: the push is sitting
+// on the socket when it wakes, and a tab that was offline long enough to drop
+// the socket reconnects into a stream that is no longer pending.
+function connectPendingSSE() {
+  pendingEventSource = new EventSource(`${BASE}/g/${SLUG}/stream`);
+  pendingEventSource.addEventListener('token_activated', activatePending);
+  // An admin edited the timing: the countdown may be pointing at the wrong
+  // moment, so let the server decide again.
+  pendingEventSource.addEventListener('schedule_changed', activatePending);
+  pendingEventSource.addEventListener('device_unbound', reloadForDevice);
+  // The PIN or a link without PIN changed; this device may be signed out.
+  pendingEventSource.addEventListener('access_changed', activatePending);
+  pendingEventSource.addEventListener('token_expired', e => {
+    pendingEventSource.close();
+    pendingEventSource = null;
+    showExpired(expiredReason(e));
+  });
+}
+
+// ── SSE ──────────────────────────────────────────────────────────────
+let eventSource = null;
+function connectSSE() {
+  const badge = document.getElementById('conn-badge');
+  const dot = document.getElementById('conn-dot');
+  const text = document.getElementById('conn-text');
+  badge.className = 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500';
+  dot.className = 'w-1.5 h-1.5 rounded-full bg-current';
+  text.textContent = tr('conn.connecting');
+
+  eventSource = new EventSource(`${BASE}/g/${SLUG}/stream`);
+
+  eventSource.addEventListener('connected', () => {
+    const wasReconnect = sseRetryCount > 0;
+    badge.className = 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-ink/10 text-ink';
+    dot.className = 'w-1.5 h-1.5 rounded-full bg-current ping-dot';
+    text.textContent = tr('conn.live');
+    sseRetryCount = 0;
+    if (wasReconnect) refetchState();
+  });
+
+  eventSource.addEventListener('state_change', e => {
+    const evt = JSON.parse(e.data);
+    states[evt.entity_id] = evt.state;
+    updateCard(evt.entity_id, evt.state);
+  });
+
+  eventSource.addEventListener('reconnected', () => { refetchState(); });
+
+  eventSource.addEventListener('token_expired', e => {
+    eventSource.close();
+    showExpired(expiredReason(e));
+  });
+
+  // The weekly window just shut, or an admin changed the timing. Either way
+  // the server is the one that knows what this page should be now, and a
+  // reload re-runs every gate — landing on the countdown if access is over.
+  const reloadForSchedule = () => {
+    eventSource.close();
+    eventSource = null;
+    location.reload();
+  };
+  eventSource.addEventListener('window_closed', reloadForSchedule);
+  eventSource.addEventListener('schedule_changed', reloadForSchedule);
+  // The PIN or a link without PIN changed, or the server's periodic re-check
+  // found this device no longer let in. The same reload lands it on the PIN
+  // screen if it was signed out, and back on this page if not.
+  eventSource.addEventListener('access_changed', reloadForSchedule);
+
+  eventSource.addEventListener('device_unbound', reloadForDevice);
+
+  eventSource.onerror = () => {
+    badge.className = 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-primary/10 text-primary';
+    dot.className = 'w-1.5 h-1.5 rounded-full bg-current';
+    text.textContent = tr('conn.offline');
+    sseRetryCount++;
+  };
+
+}
+
+async function refetchState() {
+  tempValues = {};  // Clear stale temperature cache
+  try {
+    const r = await fetch(`${BASE}/g/${SLUG}/state`);
+    if (r.status === 410) { showExpired(); return; }
+    if (r.status === 401) { showPinEntry(); return; }
+    if (await isDeviceRefusal(r)) { reloadForDevice(); return; }
+    if (!r.ok) return;
+    const data = await r.json();
+    states = data.states;
+    entityOrder = data.entities;
+    groupHeadings = data.group_headings || {};
+    renderAll();
+  } catch {}
+}
+
+// The PIN session lapsed (or the PIN changed) mid-visit. Reloading lands on
+// GET /g/<slug>, which serves the PIN screen — no second copy of that form here.
+function showPinEntry() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  location.reload();
+}
+
+// This device no longer holds a device-bound link: the admin reset the lock,
+// turned it on or off, or the cookie is gone. Same move as the PIN case —
+// reload, and the server serves whichever of the claim screen, the refusal
+// page or the live page now applies. The page has no copy of either screen.
+function reloadForDevice() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  if (pendingEventSource) { pendingEventSource.close(); pendingEventSource = null; }
+  location.reload();
+}
+
+// A 403 from the device gate carries {detail: {device: true}}; every other 403
+// (the IP allowlist, a proximity refusal) does not. Read from a clone so a
+// caller that goes on to read the body itself still can.
+async function isDeviceRefusal(r) {
+  if (r.status !== 403) return false;
+  const err = await r.clone().json().catch(() => ({}));
+  return Boolean(err.detail && err.detail.device);
+}
+
+function expiredReason(e) {
+  try { return JSON.parse(e.data).reason || null; } catch { return null; }
+}
+
+// `reason` is "used" when a use-limited link has just spent its last use, and
+// only changes the wording.
+function showExpired(reason = null) {
+  if (reason === 'used') {
+    document.getElementById('expired-title').textContent = tr('overlay.used_title');
+    document.getElementById('expired-body').textContent = tr('overlay.used_body');
+  }
+  const el = document.getElementById('expired-overlay');
+  el.classList.remove('hidden');
+  el.classList.add('flex');
+  document.querySelectorAll('button, input').forEach(el => el.disabled = true);
+}
+
+// ── Rendering ────────────────────────────────────────────────────────
+function renderAll() {
+  const container = document.getElementById('cards-container');
+  if (!entityOrder.length) {
+    container.innerHTML = `<div class="text-center py-16 text-sm text-muted">${esc(tr('devices.none'))}</div>`;
+    return;
+  }
+
+  // By group key, not domain, so input_boolean shares the one "Switches"
+  // section with switch rather than drawing a second heading of the same name.
+  const groups = {};
+  for (const eid of entityOrder) {
+    const key = groupKey(eid.split('.')[0]);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(eid);
+  }
+
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    const ia = DOMAIN_ORDER.indexOf(a);
+    const ib = DOMAIN_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  let html = '';
+  for (const key of sortedKeys) {
+    const heading = groupHeadings[key] || {};
+    // Within a section, order by what the guest actually sees: the per-token
+    // display name if set, then the HA friendly name, then the entity id.
+    const ordered = groups[key].slice().sort((a, b) =>
+      displayName(a, states[a]).localeCompare(displayName(b, states[b]), undefined, { sensitivity: 'base' })
+    );
+    const cards = ordered.map(eid => buildCard(eid, states[eid])).join('');
+    const label = heading.name || domainLabel(key);
+    // Quieter than the cards under it: a heading that competes with the
+    // entities makes the list harder to scan, not easier. A real heading
+    // element, so a screen reader can jump from one section to the next.
+    const h2 = '<h2 class="pt-5 pb-2 px-1 text-[13px] font-semibold text-muted">';
+    // A locked section's heading is plain text with nothing to tap, and the
+    // collapsed state never applies to it, so its entities always show.
+    if (heading.locked) {
+      html += `${h2}${esc(label)}</h2><div data-group="${esc(key)}">${cards}</div>`;
+      continue;
+    }
+    const open = !collapsedGroups.has(key);
+    // The button inside the heading is what opens and shuts the section.
+    html += h2
+      + `<button type="button" data-action="group-toggle" data-group="${esc(key)}"`
+      + ` aria-expanded="${open}" aria-controls="group-${esc(key)}"`
+      + ` class="group-toggle inline-flex items-center gap-1 pr-1 rounded-md text-left">`
+      + `<span aria-hidden="true" class="group-chevron material-symbols-outlined text-base">expand_more</span>`
+      + `<span>${esc(label)}</span></button></h2>`;
+    html += `<div id="group-${esc(key)}" data-group="${esc(key)}"${open ? '' : ' hidden'}>${cards}</div>`;
+  }
+  container.innerHTML = html;
+}
+
+// Opens or shuts one section in place, without a re-render, so a slider
+// mid-drag or a sheet open elsewhere on the page is left alone. The state
+// lives in collapsedGroups so a later renderAll() (a reconnect's refetch)
+// draws the section the way the guest left it.
+function toggleGroup(button) {
+  const key = button.dataset.group;
+  const open = button.getAttribute('aria-expanded') !== 'true';
+  if (open) collapsedGroups.delete(key);
+  else collapsedGroups.add(key);
+  button.setAttribute('aria-expanded', String(open));
+  const body = document.getElementById(`group-${key}`);
+  if (body) body.hidden = !open;
+}
+
+function buildCard(eid, state) {
+  if (!state) return '';
+  const domain = eid.split('.')[0];
+  const name = displayName(eid, state);
+  const stateStr = state.state;
+  const icon = DOMAIN_ICONS[domain] || 'devices';
+
+  // Only the shape goes quiet when an entity is idle. Fading the whole card
+  // for "off", as this used to, took the name down with it — and the name is
+  // what a guest reads to find the thing they came for. An entity HA cannot
+  // reach still dims whole.
+  const opacityClass = isDimmedState(domain, stateStr) ? 'opacity-60' : '';
+
+  let controls = '';
+  if (domain === 'camera') controls = buildCameraControls(eid, state);
+  else if (domain === 'light') controls = buildLightControls(eid, state);
+  else if (domain === 'switch' || domain === 'input_boolean' || domain === 'group') controls = '';
+  else if (domain === 'climate') controls = buildClimateControls(eid, state);
+  else if (domain === 'lock') controls = buildLockControls(eid, state);
+  else if (domain === 'media_player') controls = buildMediaControls(eid, state);
+  else if (domain === 'cover') controls = buildCoverControls(eid, state);
+  else if (domain === 'fan') controls = buildFanControls(eid, state);
+  else if (domain === 'alarm_control_panel') controls = buildAlarmControls(eid, state);
+  else if (domain === 'button' || domain === 'input_button') controls = buildPressControls(eid, domain);
+  else if (domain === 'counter') controls = buildCounterControls(eid, state);
+  else if (domain === 'timer') controls = buildTimerControls(eid, state);
+  else if (domain === 'input_number') controls = buildNumberControls(eid, state);
+  else if (domain === 'input_text') controls = buildTextControls(eid, state);
+  else if (domain === 'input_select') controls = buildSelectControls(eid, state);
+  else if (DATETIME_DOMAINS.includes(domain)) controls = buildPickerControls(eid, state);
+
+  // Marks a control that will ask for the guest's location when pressed, so the
+  // prompt is expected rather than a surprise. Empty string on every other card,
+  // which leaves those unchanged.
+  const locationBadge = requiresLocation(eid)
+    ? `<span role="img" aria-label="${esc(tr('card.needs_location'))}" title="${esc(tr('card.needs_location'))}"
+        class="material-symbols-outlined text-muted flex-shrink-0" style="font-size:15px">location_on</span>`
+    : '';
+
+  const hasToggle = ['light', 'switch', 'input_boolean', 'group', 'fan'].includes(domain);
+  const toggleHtml = hasToggle ? `<div class="toggle-track ${stateStr === 'on' ? 'on' : ''}"
+    role="switch" aria-checked="${stateStr === 'on'}" tabindex="0"
+    aria-label="${esc(tr('card.toggle', { name }))}"
+    data-action="toggle" data-eid="${esc(eid)}" data-domain="${domain}"
+    ></div>` : '';
+  // A sensor the admin shared the history of opens its chart from anywhere on
+  // the tile, and says so with the chart glyph where a toggle would sit.
+  const hasHistory = domain === 'sensor' && entityOption(eid, 'show_history');
+  const historyHtml = hasHistory
+    ? '<span aria-hidden="true" class="material-symbols-outlined text-muted flex-shrink-0">show_chart</span>'
+    : '';
+
+  // The whole tile is the hit target for anything with a toggle; domains with
+  // their own controls (climate, lock, cover, media, camera) are left alone.
+  const cardTap = hasToggle
+    ? `data-action="card-toggle" data-eid="${esc(eid)}" data-domain="${domain}" role="button" tabindex="0" aria-label="${esc(tr('card.toggle', { name }))}" `
+    : hasHistory
+      ? `data-action="open-history" data-eid="${esc(eid)}" role="button" tabindex="0" aria-label="${esc(tr('history.open', { name }))}" `
+      : '';
+
+  // Borderless, after Mushroom: the shadow alone lifts the card off the page,
+  // which reads softer than a ruled box and lets the tinted shape lead.
+  return `<div ${cardTap}class="bg-surface-light dark:bg-surface-dark rounded-2xl p-3 mb-2 shadow-card ${hasToggle || hasHistory ? 'cursor-pointer select-none' : ''} ${opacityClass}" id="card-${cssId(eid)}">
+    <div class="flex items-center gap-3">
+      ${entityShapeHtml(eid, domain, state, icon)}
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-semibold leading-tight truncate${locationBadge ? ' flex items-center gap-1' : ''}">${esc(name)}${locationBadge}</div>
+        <div class="text-xs text-muted leading-tight mt-0.5" id="state-${cssId(eid)}">${formatState(domain, stateStr, state)}</div>
+      </div>
+      ${toggleHtml}${historyHtml}
+    </div>
+    ${controls}
+  </div>`;
+}
+
+// The shape's colour from the entity's state. A bulb's own colour arrives as
+// numbers, not as a class, so it is set as a style — the channels are clamped
+// integers by then (lightRgb), never a string off the wire.
+function shapeStyles(color) {
+  if (!color.rgb) return { shape: '', icon: '' };
+  const [r, g, b] = color.rgb;
+  return { shape: `rgb(${r} ${g} ${b} / 0.2)`, icon: `rgb(${r} ${g} ${b})` };
+}
+
+function entityShapeHtml(eid, domain, state, icon) {
+  const color = entityColor(domain, state);
+  const styles = shapeStyles(color);
+  return `<div class="entity-shape ${color.bg}" id="shape-${cssId(eid)}"${styles.shape ? ` style="background-color: ${styles.shape}"` : ''}>
+        <span aria-hidden="true" class="material-symbols-outlined ${color.text}" id="icon-${cssId(eid)}"${styles.icon ? ` style="color: ${styles.icon}"` : ''}>${icon}</span>
+      </div>`;
+}
+
+// Repaint a card's shape after a live update, so the colour keeps tracking
+// what the entity is doing. Cards rebuilt wholesale get theirs from buildCard.
+function applyEntityColor(eid, domain, state) {
+  const shape = document.getElementById(`shape-${cssId(eid)}`);
+  const icon = document.getElementById(`icon-${cssId(eid)}`);
+  if (!shape || !icon) return;
+  const color = entityColor(domain, state);
+  const styles = shapeStyles(color);
+  shape.className = `entity-shape ${color.bg}`;
+  shape.style.backgroundColor = styles.shape;
+  icon.className = `material-symbols-outlined ${color.text}`;
+  icon.style.color = styles.icon;
+}
+
+// Home Assistant drops every attribute of an unavailable entity, friendly_name
+// included, and the server stands in an empty state for one HA did not return
+// at all. Falling straight back to the id put a raw "light.hall_lamp" in
+// front of the guest; tidied up it is a guess, but a legible one, and it only
+// ever shows for an entity that is already broken.
+function displayName(eid, state) {
+  const override = entityMeta[eid]?.display_name;
+  if (override) return override;
+  return state?.attributes?.friendly_name || previewName(eid).trim() || eid;
+}
+
+function entityOption(eid, key) {
+  return Boolean(entityMeta[eid]?.options?.[key]);
+}
+
+// Whether to ask the browser for a fix before sending this entity's command.
+// The server enforces the gate regardless of what this returns — it only
+// decides whether the guest is asked first, which is why the server-rendered
+// REQUIRES_LOCATION is the outer term.
+function requiresLocation(eid) {
+  return REQUIRES_LOCATION && Boolean(entityMeta[eid]?.require_proximity);
+}
+
+// A known HA state word in the guest's language, or the raw value
+// capitalised as it always was — an integration's own state, or one HA added
+// later, still reads the way HA spells it.
+function stateLabel(group, value) {
+  const key = `${group}.${value}`;
+  return hasTr(key) ? tr(key) : value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+// HA's two "no value" states, which any domain can report. Everything else a
+// sensor, a counter or a select holds is data and is shown as it is.
+function rawState(stateStr) {
+  return stateStr === 'unavailable' || stateStr === 'unknown' ? tr(`state.${stateStr}`) : stateStr;
+}
+
+function formatState(domain, stateStr, state) {
+  stateStr = stateStr || 'unknown';
+  if (domain === 'climate') {
+    const mode = stateLabel('climate', state.attributes?.hvac_action || stateStr);
+    const temp = state.attributes?.current_temperature;
+    return temp ? `${esc(mode)} · ${temp}°` : esc(mode);
+  }
+  if (domain === 'media_player') {
+    if (stateStr === 'playing') return esc(tr('state.playing'));
+    if (stateStr === 'paused') return esc(tr('state.paused'));
+    if (stateStr === 'idle') return esc(tr('state.idle'));
+  }
+  if (domain === 'lock') return esc(stateStr === 'locked' ? tr('state.locked') : tr('state.unlocked'));
+  if (domain === 'cover') return esc(stateLabel('cover', stateStr));
+  if (domain === 'alarm_control_panel') return esc(ALARM_STATE_LABELS[stateStr] || rawState(stateStr));
+  // A button's state is the timestamp of the last press, or unknown if it has
+  // never been pressed.
+  if (domain === 'button' || domain === 'input_button') {
+    const pressed = new Date(stateStr);
+    return esc(isNaN(pressed) ? tr('state.ready')
+      : tr('state.pressed', { time: pressed.toLocaleTimeString(uiLocale(), { timeStyle: 'short' }) }));
+  }
+  if (domain === 'counter') return esc(rawState(stateStr));
+  if (domain === 'timer') {
+    const labels = { idle: tr('state.idle'), active: tr('state.running'), paused: tr('state.paused') };
+    return esc(labels[stateStr] || rawState(stateStr));
+  }
+  if (domain === 'input_number') {
+    const unit = state.attributes?.unit_of_measurement;
+    return unit ? `${esc(rawState(stateStr))} ${esc(unit)}` : esc(rawState(stateStr));
+  }
+  if (domain === 'input_text') {
+    if (!stateStr || stateStr === 'unknown') return esc(tr('state.empty'));
+    return esc(stateStr.length > 32 ? stateStr.slice(0, 32) + '\u2026' : rawState(stateStr));
+  }
+  if (domain === 'input_select') return esc(rawState(stateStr));
+  if (DATETIME_DOMAINS.includes(domain)) {
+    const mode = pickerMode(domain, state);
+    const value = pickerValue(domain, state, mode);
+    if (!value) return esc(tr('state.not_set'));
+    if (mode === 'time') return esc(value.slice(0, 5));
+    return esc(value.replace('T', ' '));
+  }
+  if (domain === 'schedule') {
+    if (stateStr === 'on') return esc(tr('state.active'));
+    if (stateStr === 'off') return esc(tr('state.inactive'));
+    return esc(rawState(stateStr));
+  }
+  if (domain === 'fan') {
+    const pct = state.attributes?.percentage;
+    if (stateStr === 'on' && pct != null) return esc(tr('state.on_percent', { pct }));
+    return esc(stateStr === 'on' ? tr('state.on') : stateStr === 'off' ? tr('state.off') : rawState(stateStr));
+  }
+  // "recording" vs "streaming" only reflects what Frigate is doing with the feed
+  // and is not something the viewer can act on, so it is hidden. An unavailable
+  // camera still says so, because that one matters.
+  if (domain === 'camera') {
+    return (stateStr === 'unavailable' || stateStr === 'unknown') ? esc(rawState(stateStr)) : '';
+  }
+  if (domain === 'sensor') {
+    const unit = state.attributes?.unit_of_measurement;
+    return unit ? `${esc(rawState(stateStr))} ${esc(unit)}` : esc(rawState(stateStr));
+  }
+  if (domain === 'binary_sensor') {
+    if (stateStr === 'on') return esc(tr('state.on'));
+    if (stateStr === 'off') return esc(tr('state.off'));
+    return esc(rawState(stateStr));
+  }
+  return esc(stateStr === 'on' ? tr('state.on') : stateStr === 'off' ? tr('state.off') : rawState(stateStr));
+}
+
+// Whether the whole card dims: only for an entity HA cannot reach or has no
+// value for. Being switched off is not that — the shape's colour already says
+// "idle", and the name has to stay readable either way.
+function isDimmedState(domain, stateStr) {
+  // A button that has never been pressed reports 'unknown'. That is its resting
+  // state, not an unavailable entity.
+  if (domain === 'button' || domain === 'input_button') return stateStr === 'unavailable';
+  return stateStr === 'unavailable' || stateStr === 'unknown';
+}
+
+function buildCameraControls(eid, state) {
+  if (state.state === 'unavailable' || state.state === 'unknown') return '';
+  const id = cssId(eid);
+  return `<div class="mt-3">
+    <div class="relative rounded-xl overflow-hidden bg-soot/5 dark:bg-white/5" style="aspect-ratio:16/9">
+      <img id="cam-${id}" data-eid="${esc(eid)}" alt="${esc(displayName(eid, state))}"
+           class="w-full h-full object-cover" src="${cameraStreamUrl(eid)}">
+    </div>
+  </div>`;
+}
+
+function cameraStreamUrl(eid) {
+  // Cache-busted so re-attaching after a hidden tab opens a fresh response
+  // rather than reusing the aborted one.
+  return `${BASE}/g/${SLUG}/camera/${encodeURIComponent(eid)}/stream?t=${Date.now()}`;
+}
+
+// Cameras stream for as long as the page is open. A backgrounded tab would
+// otherwise keep one upstream connection per camera pinned open for hours, so
+// streams are dropped on hide and re-attached on show. Clearing src is what
+// actually closes the MJPEG response; removing the element alone does not.
+function detachCameraStreams() {
+  document.querySelectorAll('img[id^="cam-"]').forEach(img => { img.src = ''; });
+}
+
+function attachCameraStreams() {
+  document.querySelectorAll('img[id^="cam-"]').forEach(img => {
+    const eid = img.dataset.eid;
+    if (eid && !img.getAttribute('src')) img.src = cameraStreamUrl(eid);
+  });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') detachCameraStreams();
+  else attachCameraStreams();
+});
+
+window.addEventListener('pagehide', detachCameraStreams);
+
+// ── Light colour ─────────────────────────────────────────────────────
+// HA reports what a light can do in supported_color_modes. Only these modes
+// take a colour; color_temp and brightness lights get no wheel however the
+// token is configured.
+const COLOR_CAPABLE_MODES = ['rgb', 'rgbw', 'rgbww', 'hs', 'xy'];
+const WHEEL_SIZE = 220;  // px — must match the inline size on #sheet-wheel
+
+function lightSupportsColor(state) {
+  const modes = state?.attributes?.supported_color_modes || [];
+  return modes.some(m => COLOR_CAPABLE_MODES.includes(m));
+}
+
+// The wheel is shown only when the token opted this entity in AND the bulb can
+// actually do colour — both, never either alone.
+function showsColorWheel(eid, state) {
+  return entityOption(eid, 'show_color') && lightSupportsColor(state);
+}
+
+// A bulb listing color_temp takes a warm-to-cool white instead of, or alongside,
+// the wheel. The same show_color toggle grants it: one opt-in for "colour
+// control", and the bulb decides which widgets that buys.
+function lightSupportsColorTemp(state) {
+  return (state?.attributes?.supported_color_modes || []).includes('color_temp');
+}
+
+function showsColorTemp(eid, state) {
+  return entityOption(eid, 'show_color') && lightSupportsColorTemp(state);
+}
+
+// One swatch, either widget behind it.
+function showsColorControls(eid, state) {
+  return showsColorWheel(eid, state) || showsColorTemp(eid, state);
+}
+
+// HA's own fallbacks, for a bulb that claims color_temp and publishes no bounds.
+const DEFAULT_MIN_KELVIN = 2000;
+const DEFAULT_MAX_KELVIN = 6535;
+// Mirrors KELVIN_MIN/KELVIN_MAX in app/models.py: the slider clamps to the
+// bulb's range, and the bulb's range is clamped to what the server accepts.
+const KELVIN_FLOOR = 1000;
+const KELVIN_CEILING = 20000;
+
+function lightTempRange(state) {
+  const attrs = state?.attributes || {};
+  const rawMin = Number(attrs.min_color_temp_kelvin);
+  const rawMax = Number(attrs.max_color_temp_kelvin);
+  let min = Number.isFinite(rawMin) && rawMin > 0 ? Math.round(rawMin) : DEFAULT_MIN_KELVIN;
+  let max = Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : DEFAULT_MAX_KELVIN;
+  min = Math.min(Math.max(min, KELVIN_FLOOR), KELVIN_CEILING - 1);
+  max = Math.min(Math.max(max, min + 1), KELVIN_CEILING);
+  return [min, max];
+}
+
+// Planckian curve fit (Tanner Helland's). Close enough for a swatch and a track
+// gradient, and using the one function keeps the two showing the same colour.
+function kelvinToRgb(kelvin) {
+  const t = Math.min(KELVIN_CEILING, Math.max(KELVIN_FLOOR, Number(kelvin) || KELVIN_FLOOR)) / 100;
+  const r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
+  const g = t <= 66 ? 99.4708025861 * Math.log(t) - 161.1195681661
+    : 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  return [r, g, b].map(c => Math.round(Math.min(255, Math.max(0, c))));
+}
+
+function kelvinCss(kelvin) {
+  const [r, g, b] = kelvinToRgb(kelvin);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Value is pinned to 1: the wheel picks hue and saturation, brightness is the
+// slider's job, and folding it in here would fight that control.
+function hsvToRgb(h, s) {
+  const x = 1 - Math.abs((h / 60) % 2 - 1);
+  const [r, g, b] = h < 60 ? [1, x, 0] : h < 120 ? [x, 1, 0] : h < 180 ? [0, 1, x]
+    : h < 240 ? [0, x, 1] : h < 300 ? [x, 0, 1] : [1, 0, x];
+  return [r, g, b].map(c => Math.round((c * s + (1 - s)) * 255));
+}
+
+function rgbToHs(rgb) {
+  const [r, g, b] = (rgb || [255, 255, 255]).map(c => c / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = 60 * (((g - b) / d) % 6);
+    else if (max === g) h = 60 * ((b - r) / d + 2);
+    else h = 60 * ((r - g) / d + 4);
+  }
+  return [h < 0 ? h + 360 : h, max === 0 ? 0 : d / max];
+}
+
+// Hue 0 (red) points up and runs clockwise, matching the conic-gradient.
+function hsToOffset(h, s) {
+  const rad = h * Math.PI / 180;
+  const radius = (WHEEL_SIZE / 2) * Math.min(s, 1);
+  return [radius * Math.sin(rad), -radius * Math.cos(rad)];
+}
+
+function swatchColor(state) {
+  const attrs = state?.attributes || {};
+  // In white mode the swatch comes from the kelvin value, not from rgb_color:
+  // not every integration fills rgb_color while in colour-temp mode, and
+  // deriving it keeps the swatch and the slider's gradient in agreement.
+  if (attrs.color_mode === 'color_temp' && attrs.color_temp_kelvin != null) {
+    return kelvinCss(attrs.color_temp_kelvin);
+  }
+  const [r, g, b] = attrs.rgb_color || [255, 255, 255];
+  return `rgb(${Number(r) || 0}, ${Number(g) || 0}, ${Number(b) || 0})`;
+}
+
+function buildLightControls(eid, state) {
+  if (state.state !== 'on') return '';
+  // Both are opt-in: with neither enabled for this entity the light is on/off only.
+  const showBrightness = entityOption(eid, 'show_brightness');
+  const showColor = showsColorControls(eid, state);
+  if (!showBrightness && !showColor) return '';
+
+  const brightness = Number(state.attributes?.brightness) || 255;
+  const pct = Math.round((brightness / 255) * 100);
+  const swatch = showColor ? `<button type="button" class="color-swatch" id="swatch-${cssId(eid)}"
+      style="background: ${swatchColor(state)}" aria-label="${esc(tr('light.choose_colour'))}"
+      data-action="open-color-sheet" data-eid="${esc(eid)}"></button>` : '';
+
+  if (!showBrightness) {
+    return `<div class="mt-3 flex items-center gap-3">
+      ${swatch}
+      <span class="text-xs text-muted">${esc(tr('color.colour'))}</span>
+    </div>`;
+  }
+  return `<div data-slider-section class="mt-3 flex items-center gap-3">
+    <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">brightness_low</span>
+    <input type="range" min="1" max="100" value="${pct}" id="bri-${cssId(eid)}"
+      aria-label="${esc(tr('light.brightness'))}"
+      data-range-action="brightness" data-eid="${esc(eid)}" data-display-id="bri-val-${cssId(eid)}">
+    <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">brightness_high</span>
+    <span class="text-xs text-muted tabular-nums min-w-[36px] text-right font-mono" id="bri-val-${cssId(eid)}">${pct}%</span>
+    ${swatch}
+  </div>`;
+}
+
+function buildClimateControls(eid, state) {
+  const rawCurrent = state.attributes?.current_temperature;
+  const current = rawCurrent != null && !isNaN(Number(rawCurrent)) ? rawCurrent : '--';
+  const rawTarget = state.attributes?.temperature;
+  const target = rawTarget != null && !isNaN(Number(rawTarget)) ? rawTarget : '--';
+  const unit = state.attributes?.temperature_unit || '\u00b0';
+  const mode = state.attributes?.hvac_action || state.state;
+  const humidity = state.attributes?.current_humidity;
+
+  const modeColors = {
+    cooling: 'from-blue-500/20 to-cyan-500/20', heating: 'from-orange-500/20 to-red-500/20',
+    idle: 'from-soot/5 to-soot/5', off: 'from-soot/5 to-soot/5',
+    drying: 'from-amber-500/20 to-yellow-500/20', fan: 'from-teal-500/20 to-emerald-500/20',
+  };
+  const darkGradients = {
+    cooling: 'dark:from-blue-500/10 dark:to-cyan-500/10', heating: 'dark:from-orange-500/10 dark:to-red-500/10',
+    idle: 'dark:from-white/5 dark:to-white/5', off: 'dark:from-white/5 dark:to-white/5',
+    drying: 'dark:from-amber-500/10 dark:to-yellow-500/10', fan: 'dark:from-teal-500/10 dark:to-emerald-500/10',
+  };
+  const gradClass = modeColors[mode] || modeColors.idle;
+  const darkGradClass = darkGradients[mode] || darkGradients.idle;
+
+  const HVAC_ICONS = { off: 'power_settings_new', cool: 'ac_unit', heat: 'local_fire_department',
+    auto: 'thermostat_auto', dry: 'water_drop', fan_only: 'wind_power', heat_cool: 'thermostat_auto' };
+
+  const hvacModes = state.attributes?.hvac_modes || ['off', 'cool', 'heat'];
+  const activeMode = state.state;
+
+  return `<div class="mt-3 rounded-xl bg-gradient-to-br ${gradClass} ${darkGradClass} p-4">
+    <div class="text-center">
+      <div class="text-4xl font-serif tabular-nums" id="temp-cur-${cssId(eid)}">${esc(String(current))}<span class="text-lg text-muted">${esc(unit)}</span></div>
+      <div class="text-xs text-muted mt-1 font-mono" id="temp-tgt-${cssId(eid)}">${esc(climateTargetText(target, unit, humidity))}</div>
+    </div>
+    <div class="flex items-center justify-center gap-6 mt-3">
+      <button data-action="adjust-temp" data-eid="${esc(eid)}" data-delta="-0.5" aria-label="${esc(tr('climate.decrease'))}" class="w-11 h-11 rounded-full bg-surface-light dark:bg-surface-dark shadow-sm flex items-center justify-center text-lg font-semibold active:scale-95 transition-transform">
+        <span aria-hidden="true" class="material-symbols-outlined">remove</span>
+      </button>
+      <button data-action="adjust-temp" data-eid="${esc(eid)}" data-delta="0.5" aria-label="${esc(tr('climate.increase'))}" class="w-11 h-11 rounded-full bg-surface-light dark:bg-surface-dark shadow-sm flex items-center justify-center text-lg font-semibold active:scale-95 transition-transform">
+        <span aria-hidden="true" class="material-symbols-outlined">add</span>
+      </button>
+    </div>
+    <div class="flex justify-center gap-2 mt-3 flex-wrap" role="radiogroup" aria-label="${esc(tr('climate.mode'))}" id="hvac-pills-${cssId(eid)}">
+      ${hvacModes.map(m => `<button data-action="set-hvac" data-eid="${esc(eid)}" data-mode="${esc(m)}"
+        role="radio" aria-checked="${activeMode === m}"
+        class="px-3 py-1 rounded-full text-xs font-display font-semibold transition-colors ${activeMode === m
+          ? 'bg-primary text-on-primary' : 'bg-surface-light dark:bg-surface-dark text-muted border border-border-light dark:border-border-dark'}"
+        ><span aria-hidden="true" class="material-symbols-outlined text-sm align-middle mr-0.5">${HVAC_ICONS[m] || 'thermostat'}</span>${esc(hvacLabel(m))}</button>`).join('')}
+    </div>
+  </div>`;
+}
+
+// "Target: 21° · 40% humidity" — the line under a thermostat's reading. One
+// sentence per case rather than glued fragments, so a translation can put the
+// humidity where its language wants it.
+function climateTargetText(target, unit, humidity) {
+  const temp = `${target}${unit}`;
+  return humidity != null
+    ? tr('climate.target_humidity', { temp, humidity })
+    : tr('climate.target', { temp });
+}
+
+// HA's hvac_modes values. A mode HA adds later falls back to its raw name,
+// which is what every pill showed before.
+function hvacLabel(mode) {
+  return hasTr(`hvac.${mode}`) ? tr(`hvac.${mode}`) : mode;
+}
+
+function buildLockControls(eid, state) {
+  const locked = state.state === 'locked';
+  const supportsOpen = (Number(state.attributes?.supported_features) & 1) !== 0;
+  return `<div class="mt-3 grid ${supportsOpen ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
+  <button data-action="confirm-lock" data-eid="${esc(eid)}" data-locked="${locked}" id="lock-btn-${cssId(eid)}"
+    class="w-full py-3 rounded-xl font-display font-semibold text-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.98]
+    ${locked
+      ? 'text-primary bg-primary/10'
+      : 'text-ink bg-ink/10'}">
+    <span aria-hidden="true" class="material-symbols-outlined text-lg">${locked ? 'lock' : 'lock_open'}</span>
+    ${esc(locked ? tr('lock.tap_unlock') : tr('lock.tap_lock'))}
+  </button>
+  ${supportsOpen ? `<button data-action="confirm-lock-open" data-eid="${esc(eid)}"
+    class="w-full py-3 rounded-xl text-accent bg-accent/10 font-display font-semibold text-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.98]">
+    <span aria-hidden="true" class="material-symbols-outlined text-lg">meeting_room</span>
+    ${esc(tr('lock.open'))}
+  </button>` : ''}
+  </div>`;
+}
+
+function buildMediaControls(eid, state) {
+  const playing = state.state === 'playing';
+  const volume = Math.round((Number(state.attributes?.volume_level) || 0.5) * 100);
+  const title = state.attributes?.media_title || '';
+  const artist = state.attributes?.media_artist || state.attributes?.source || '';
+
+  return `<div class="mt-3">
+    <div class="flex items-center gap-3 mb-3">
+      <button data-action="media-cmd" data-eid="${esc(eid)}" data-service="${playing ? 'media_pause' : 'media_play'}" id="play-btn-${cssId(eid)}"
+        class="w-11 h-11 rounded-full bg-primary flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform">
+        <span aria-hidden="true" class="material-symbols-outlined filled text-on-primary text-xl">${playing ? 'pause' : 'play_arrow'}</span>
+      </button>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-semibold truncate" id="media-title-${cssId(eid)}">${esc(title || state.state)}</div>
+        <div class="text-xs text-muted truncate" id="media-artist-${cssId(eid)}">${esc(artist)}</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">volume_down</span>
+      <input type="range" min="0" max="100" value="${volume}" id="vol-${cssId(eid)}"
+        aria-label="${esc(tr('media.volume'))}"
+        data-range-action="volume" data-eid="${esc(eid)}" data-display-id="vol-val-${cssId(eid)}">
+      <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">volume_up</span>
+      <span class="text-xs text-muted tabular-nums min-w-[36px] text-right font-mono" id="vol-val-${cssId(eid)}">${volume}%</span>
+    </div>
+  </div>`;
+}
+
+function buildCoverControls(eid) {
+  return `<div class="flex gap-2 mt-3">
+    <button data-action="cover-cmd" data-eid="${esc(eid)}" data-service="open_cover" class="flex-1 py-2.5 rounded-xl bg-soot/[0.06] dark:bg-white/10 text-sm font-display font-medium flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
+      <span aria-hidden="true" class="material-symbols-outlined text-base">expand_less</span> ${esc(tr('cover.open_action'))}
+    </button>
+    <button data-action="cover-cmd" data-eid="${esc(eid)}" data-service="stop_cover" class="flex-1 py-2.5 rounded-xl bg-soot/[0.06] dark:bg-white/10 text-sm font-display font-medium flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
+      <span aria-hidden="true" class="material-symbols-outlined text-base">stop</span> ${esc(tr('cover.stop_action'))}
+    </button>
+    <button data-action="cover-cmd" data-eid="${esc(eid)}" data-service="close_cover" class="flex-1 py-2.5 rounded-xl bg-soot/[0.06] dark:bg-white/10 text-sm font-display font-medium flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
+      <span aria-hidden="true" class="material-symbols-outlined text-base">expand_more</span> ${esc(tr('cover.close_action'))}
+    </button>
+  </div>`;
+}
+
+function buildFanControls(eid, state) {
+  if (state.state !== 'on') return '';
+  const features = state.attributes?.supported_features ?? 0;
+  const supportsPercentage = (features & 1) !== 0;
+  if (!supportsPercentage) return '';
+  const pct = state.attributes?.percentage ?? 0;
+  const step = state.attributes?.percentage_step || 1;
+  return `<div data-slider-section class="mt-3 flex items-center gap-3">
+    <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">air</span>
+    <input type="range" min="0" max="100" step="${step}" value="${pct}"
+      aria-label="${esc(tr('fan.speed'))}" id="fan-${cssId(eid)}"
+      data-range-action="fan-speed" data-eid="${esc(eid)}" data-display-id="fan-val-${cssId(eid)}">
+    <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">mode_fan</span>
+    <span class="text-xs text-muted tabular-nums min-w-[36px] text-right font-mono" id="fan-val-${cssId(eid)}">${pct}%</span>
+  </div>`;
+}
+
+// ── Alarm ────────────────────────────────────────────────────────────
+// Bits of HA's AlarmControlPanelEntityFeature. Only the modes a panel actually
+// advertises get a button. alarm_trigger has a bit too (8) and is deliberately
+// not offered — see ALLOWED_SERVICES.
+const ALARM_MODES = [
+  { feature: 1, armed: 'armed_home',  service: 'alarm_arm_home',  label: tr('alarm.mode.home'),  icon: 'home' },
+  { feature: 2, armed: 'armed_away',  service: 'alarm_arm_away',  label: tr('alarm.mode.away'),  icon: 'directions_walk' },
+  { feature: 4, armed: 'armed_night', service: 'alarm_arm_night', label: tr('alarm.mode.night'), icon: 'bedtime' },
+];
+const ALARM_STATE_LABELS = {
+  disarmed: tr('alarm.state.disarmed'), armed_home: tr('alarm.state.armed_home'),
+  armed_away: tr('alarm.state.armed_away'), armed_night: tr('alarm.state.armed_night'),
+  arming: tr('alarm.state.arming'), pending: tr('alarm.state.pending'),
+  triggered: tr('alarm.state.triggered'),
+};
+
+function buildAlarmControls(eid, state) {
+  const features = Number(state.attributes?.supported_features) || 0;
+  const modes = ALARM_MODES.filter(m => (features & m.feature) !== 0);
+
+  const armButtons = modes.map(m => `<button data-action="confirm-alarm" data-eid="${esc(eid)}"
+    data-service="${m.service}" data-title="${esc(tr('alarm.arm_title', { mode: m.label }))}" data-body="${esc(tr('alarm.arm_body', { mode: m.label }))}"
+    class="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-xl font-display font-semibold text-xs transition-colors active:scale-[0.98] ${
+      state.state === m.armed
+        ? 'text-rose-600 bg-rose-600/15'
+        : 'bg-soot/[0.06] dark:bg-white/10 text-muted'}">
+    <span aria-hidden="true" class="material-symbols-outlined text-lg">${m.icon}</span>
+    ${esc(m.label)}
+  </button>`).join('');
+
+  const disarm = state.state === 'disarmed' ? '' : `<button data-action="confirm-alarm" data-eid="${esc(eid)}"
+    data-service="alarm_disarm" data-title="${esc(tr('alarm.disarm_title'))}" data-body="${esc(tr('alarm.disarm_body'))}"
+    class="w-full mt-2 py-3 rounded-xl text-ink bg-ink/10 font-display font-semibold text-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.98]">
+    <span aria-hidden="true" class="material-symbols-outlined text-lg">lock_open</span>
+    ${esc(tr('alarm.disarm'))}
+  </button>`;
+
+  if (!armButtons && !disarm) return '';
+  return `<div class="mt-3">
+    ${armButtons ? `<div class="flex gap-2">${armButtons}</div>` : ''}
+    ${disarm}
+  </div>`;
+}
+
+function buildPressControls(eid, domain) {
+  return `<div class="mt-3">
+    <button data-action="svc-cmd" data-eid="${esc(eid)}" data-domain="${domain}" data-service="press"
+      class="w-full py-3 rounded-xl text-accent bg-accent/10 font-display font-semibold text-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.98]">
+      <span aria-hidden="true" class="material-symbols-outlined text-lg">radio_button_checked</span>
+      ${esc(tr('button.press'))}
+    </button>
+  </div>`;
+}
+
+function buildCounterControls(eid, state) {
+  const value = isNaN(Number(state.state)) ? '--' : state.state;
+  const btn = (service, icon, label, extra = '') => `<button data-action="svc-cmd" data-eid="${esc(eid)}"
+    data-domain="counter" data-service="${service}" aria-label="${esc(label)}"
+    class="w-11 h-11 rounded-full bg-soot/[0.06] dark:bg-white/10 flex items-center justify-center active:scale-95 transition-transform ${extra}">
+    <span aria-hidden="true" class="material-symbols-outlined">${icon}</span>
+  </button>`;
+  return `<div class="mt-3 flex items-center justify-center gap-4">
+    ${btn('decrement', 'remove', tr('counter.decrease'))}
+    <span class="text-2xl font-serif tabular-nums w-12 text-center">${esc(String(value))}</span>
+    ${btn('increment', 'add', tr('counter.increase'))}
+    ${btn('reset', 'restart_alt', tr('counter.reset'), 'text-muted')}
+  </div>`;
+}
+
+function formatDuration(totalSeconds) {
+  const pad = n => String(n).padStart(2, '0');
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const sec = totalSeconds % 60;
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
+
+// A running timer's `remaining` attribute is frozen at the value it had when the
+// state last changed, so the live figure has to come from finishes_at.
+function timerRemaining(state) {
+  if (state.state === 'active' && state.attributes?.finishes_at) {
+    const secs = (new Date(state.attributes.finishes_at).getTime() - Date.now()) / 1000;
+    if (!isNaN(secs)) return formatDuration(Math.max(0, Math.round(secs)));
+  }
+  const parts = String(state.attributes?.remaining || state.attributes?.duration || '').split(':').map(Number);
+  if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+    return formatDuration(parts[0] * 3600 + parts[1] * 60 + parts[2]);
+  }
+  return '--:--';
+}
+
+function buildTimerControls(eid, state) {
+  const running = state.state === 'active';
+  const idle = state.state !== 'active' && state.state !== 'paused';
+  return `<div class="mt-3">
+    <div class="text-center text-2xl font-serif tabular-nums mb-3">${esc(timerRemaining(state))}</div>
+    <div class="grid ${idle ? 'grid-cols-1' : 'grid-cols-2'} gap-2">
+      <button data-action="svc-cmd" data-eid="${esc(eid)}" data-domain="timer" data-service="${running ? 'pause' : 'start'}"
+        class="py-2.5 rounded-xl text-accent bg-accent/10 font-display font-semibold text-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
+        <span aria-hidden="true" class="material-symbols-outlined text-lg">${running ? 'pause' : 'play_arrow'}</span>
+        ${esc(running ? tr('timer.pause') : state.state === 'paused' ? tr('timer.resume') : tr('timer.start'))}
+      </button>
+      ${idle ? '' : `<button data-action="svc-cmd" data-eid="${esc(eid)}" data-domain="timer" data-service="cancel"
+        class="py-2.5 rounded-xl text-primary bg-primary/10 font-display font-semibold text-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
+        <span aria-hidden="true" class="material-symbols-outlined text-lg">stop</span>
+        ${esc(tr('timer.cancel'))}
+      </button>`}
+    </div>
+  </div>`;
+}
+
+function buildNumberControls(eid, state) {
+  const min = Number(state.attributes?.min ?? 0);
+  const max = Number(state.attributes?.max ?? 100);
+  const step = Number(state.attributes?.step ?? 1);
+  const unit = state.attributes?.unit_of_measurement || '';
+  const value = isNaN(Number(state.state)) ? min : Number(state.state);
+  return `<div data-slider-section class="mt-3">
+    <div class="flex items-center justify-between text-xs text-muted font-mono mb-1">
+      <span>${esc(String(min))}${esc(unit)}</span>
+      <span class="font-semibold text-ink" id="num-val-${cssId(eid)}">${esc(String(value))}${esc(unit)}</span>
+      <span>${esc(String(max))}${esc(unit)}</span>
+    </div>
+    <input type="range" min="${min}" max="${max}" step="${step}" value="${value}" id="num-${cssId(eid)}"
+      aria-label="${esc(tr('number.value'))}" data-range-action="input-number" data-eid="${esc(eid)}"
+      data-display-id="num-val-${cssId(eid)}" data-display-suffix="${esc(unit)}">
+  </div>`;
+}
+
+function buildTextControls(eid, state) {
+  const value = state.state === 'unknown' || state.state === 'unavailable' ? '' : state.state;
+  const maxlength = Number(state.attributes?.max);
+  const mode = state.attributes?.mode === 'password' ? 'password' : 'text';
+  return `<div class="mt-3">
+    <input type="${mode}" value="${esc(value)}" ${maxlength ? `maxlength="${maxlength}"` : ''} id="text-${cssId(eid)}"
+      aria-label="${esc(displayName(eid, state))}" data-value-action="text" data-eid="${esc(eid)}"
+      class="w-full py-2.5 px-3 rounded-xl border border-border-light dark:border-border-dark bg-bg-light dark:bg-bg-dark text-sm outline-none focus:border-primary">
+  </div>`;
+}
+
+function buildSelectControls(eid, state) {
+  const options = state.attributes?.options || [];
+  if (!options.length) return '';
+  return `<div class="mt-3">
+    <select id="sel-${cssId(eid)}" aria-label="${esc(displayName(eid, state))}"
+      data-value-action="select" data-eid="${esc(eid)}"
+      class="w-full py-2.5 px-3 rounded-xl border border-border-light dark:border-border-dark bg-bg-light dark:bg-bg-dark text-sm outline-none focus:border-primary">
+      ${options.map(o => `<option value="${esc(String(o))}"${o === state.state ? ' selected' : ''}>${esc(String(o))}</option>`).join('')}
+    </select>
+  </div>`;
+}
+
+// ── Date / time pickers ──────────────────────────────────────────────
+// One widget for three domains. time and datetime are fixed; an input_datetime
+// says what it holds in has_date / has_time.
+const DATETIME_DOMAINS = ['time', 'datetime', 'input_datetime'];
+
+function pickerMode(domain, state) {
+  if (domain === 'time') return 'time';
+  if (domain === 'datetime') return 'datetime';
+  const hasDate = state.attributes?.has_date;
+  const hasTime = state.attributes?.has_time;
+  if (hasDate && !hasTime) return 'date';
+  if (hasTime && !hasDate) return 'time';
+  return 'datetime';
+}
+
+// Normalises the HA state into what the matching <input> wants as its value.
+function pickerValue(domain, state, mode) {
+  const raw = state.state;
+  if (!raw || raw === 'unknown' || raw === 'unavailable') return '';
+  if (mode === 'time') return raw.slice(0, 8);
+  if (mode === 'date') return raw.slice(0, 10);
+  // datetime entities report an absolute UTC timestamp; input_datetime reports
+  // local wall-clock time with a space separator. Only the former converts.
+  if (domain === 'datetime') {
+    const d = new Date(raw);
+    if (isNaN(d)) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  return raw.replace(' ', 'T').slice(0, 16);
+}
+
+function buildPickerControls(eid, state) {
+  const domain = eid.split('.')[0];
+  const mode = pickerMode(domain, state);
+  return `<div class="mt-3 flex items-center gap-3">
+    <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">${DOMAIN_ICONS[domain]}</span>
+    <input type="${mode === 'datetime' ? 'datetime-local' : mode}" ${mode === 'time' ? 'step="1"' : ''}
+      value="${esc(pickerValue(domain, state, mode))}" id="dt-${cssId(eid)}"
+      aria-label="${esc(displayName(eid, state))}" data-value-action="picker" data-eid="${esc(eid)}"
+      class="flex-1 py-2.5 px-3 rounded-xl border border-border-light dark:border-border-dark bg-bg-light dark:bg-bg-dark text-sm outline-none focus:border-primary">
+  </div>`;
+}
+
+// ── Card Updates (live SSE) ──────────────────────────────────────────
+// Widgets whose shape follows the state — which buttons exist, what the options
+// are, where the slider sits — are cheapest to rebuild wholesale.
+const REBUILD_DOMAINS = ['alarm_control_panel', 'counter', 'timer',
+  'input_number', 'input_text', 'input_select', 'time', 'datetime', 'input_datetime'];
+
+function rebuildCard(eid, state, card) {
+  // A card the guest is mid-way through editing keeps its DOM: the update that
+  // lands here is usually the echo of their own change, and replacing the node
+  // would steal focus and discard whatever they have typed since.
+  if (card.contains(document.activeElement)) return;
+  const parent = card.parentElement;
+  if (!parent) return;
+  const fresh = document.createElement('div');
+  fresh.innerHTML = buildCard(eid, state);
+  parent.replaceChild(fresh.firstElementChild, card);
+  const freshCard = document.getElementById(`card-${cssId(eid)}`);
+  if (freshCard) {
+    freshCard.classList.remove('pulse');
+    void freshCard.offsetWidth;
+    freshCard.classList.add('pulse');
+  }
+}
+
+function updateCard(eid, state) {
+  const card = document.getElementById(`card-${cssId(eid)}`);
+  if (!card) return;
+
+  const domain = eid.split('.')[0];
+
+  const stateEl = document.getElementById(`state-${cssId(eid)}`);
+  if (stateEl) stateEl.textContent = formatState(domain, state.state, state);
+
+  card.classList.toggle('opacity-60', isDimmedState(domain, state.state));
+  applyEntityColor(eid, domain, state);
+
+  // Domain-specific updates may replaceChild, so pulse is handled there
+  const rebuilds = REBUILD_DOMAINS.includes(domain);
+  const needsPulse = domain !== 'light' && domain !== 'fan' && !rebuilds;
+
+  if (domain === 'light') updateLightCard(eid, state, card);
+  else if (domain === 'switch' || domain === 'input_boolean' || domain === 'group') updateToggleCard(state, card);
+  else if (domain === 'climate') updateClimateCard(eid, state);
+  else if (domain === 'lock') updateLockCard(eid, state);
+  else if (domain === 'media_player') updateMediaCard(eid, state);
+  else if (domain === 'fan') updateFanCard(eid, state, card);
+  else if (rebuilds) rebuildCard(eid, state, card);
+
+  if (needsPulse) {
+    card.classList.remove('pulse');
+    void card.offsetWidth;
+    card.classList.add('pulse');
+  }
+}
+
+function updateLightCard(eid, state, card) {
+  const on = state.state === 'on';
+  const toggle = card.querySelector('.toggle-track');
+  if (toggle) {
+    toggle.classList.toggle('on', on);
+    toggle.setAttribute('aria-checked', String(on));
+  }
+
+  // Which controls the card carries, against which it should carry now. A
+  // colour tick echoes back several times a second, so this compares both
+  // controls rather than rebuilding whenever the slider happens to be absent.
+  const hasSlider = Boolean(card.querySelector('input[data-range-action="brightness"]'));
+  const hasSwatch = Boolean(card.querySelector(`#swatch-${cssId(eid)}`));
+  const wantsSlider = on && entityOption(eid, 'show_brightness');
+  const wantsSwatch = on && showsColorControls(eid, state);
+
+  if (hasSlider !== wantsSlider || hasSwatch !== wantsSwatch) {
+    const parent = card.parentElement;
+    const newCard = document.createElement('div');
+    newCard.innerHTML = buildCard(eid, state);
+    parent.replaceChild(newCard.firstElementChild, card);
+    // Re-query to apply pulse to the new element
+    const freshCard = document.getElementById(`card-${cssId(eid)}`);
+    if (freshCard) {
+      freshCard.classList.remove('pulse');
+      void freshCard.offsetWidth;
+      freshCard.classList.add('pulse');
+    }
+    return;
+  }
+
+  if (hasSlider) {
+    const brightness = state.attributes?.brightness ?? 255;
+    const pct = Math.round((brightness / 255) * 100);
+    const slider = document.getElementById(`bri-${cssId(eid)}`);
+    if (slider) { slider.value = pct; document.getElementById(`bri-val-${cssId(eid)}`).textContent = pct + '%'; }
+  }
+  if (hasSwatch) {
+    const swatch = document.getElementById(`swatch-${cssId(eid)}`);
+    if (swatch) swatch.style.background = swatchColor(state);
+    // HA's echo repositions the thumb only when the guest is not dragging it —
+    // the drag owns the thumb until the pointer comes up.
+    if (wheelSheetEid === eid && !activeWheel) positionWheelThumb(state.attributes?.rgb_color);
+    // Same bargain for the temperature slider.
+    if (wheelSheetEid === eid && !activeTemp) positionTempSlider(state);
+  }
+}
+
+function updateToggleCard(state, card) {
+  const on = state.state === 'on';
+  const toggle = card.querySelector('.toggle-track');
+  if (toggle) {
+    toggle.classList.toggle('on', on);
+    toggle.setAttribute('aria-checked', String(on));
+  }
+}
+
+function updateClimateCard(eid, state) {
+  const unit = state.attributes?.temperature_unit || '\u00b0';
+  const curEl = document.getElementById(`temp-cur-${cssId(eid)}`);
+  const tgtEl = document.getElementById(`temp-tgt-${cssId(eid)}`);
+  const humidity = state.attributes?.current_humidity;
+
+  // H-2: Safe temperature update (no innerHTML)
+  if (curEl) {
+    const temp = state.attributes?.current_temperature ?? '--';
+    curEl.textContent = '';
+    curEl.appendChild(document.createTextNode(String(temp)));
+    const unitSpan = document.createElement('span');
+    unitSpan.className = 'text-lg text-muted';
+    unitSpan.textContent = unit;
+    curEl.appendChild(unitSpan);
+  }
+  if (tgtEl) tgtEl.textContent = climateTargetText(state.attributes?.temperature ?? '--', unit, humidity);
+
+  // M-18: Re-render HVAC pills
+  const pillsEl = document.getElementById(`hvac-pills-${cssId(eid)}`);
+  if (pillsEl) {
+    const hvacModes = state.attributes?.hvac_modes || ['off', 'cool', 'heat'];
+    const activeMode = state.state;
+    const HVAC_ICONS = { off: 'power_settings_new', cool: 'ac_unit', heat: 'local_fire_department',
+      auto: 'thermostat_auto', dry: 'water_drop', fan_only: 'wind_power', heat_cool: 'thermostat_auto' };
+    pillsEl.innerHTML = hvacModes.map(m => `<button data-action="set-hvac" data-eid="${esc(eid)}" data-mode="${esc(m)}"
+      role="radio" aria-checked="${activeMode === m}"
+      class="px-3 py-1 rounded-full text-xs font-display font-semibold transition-colors ${activeMode === m
+        ? 'bg-primary text-on-primary' : 'bg-surface-light dark:bg-surface-dark text-muted border border-border-light dark:border-border-dark'}"
+      ><span aria-hidden="true" class="material-symbols-outlined text-sm align-middle mr-0.5">${HVAC_ICONS[m] || 'thermostat'}</span>${esc(hvacLabel(m))}</button>`).join('');
+  }
+
+  // M-18: Update gradient
+  const card = document.getElementById(`card-${cssId(eid)}`);
+  if (card) {
+    const gradContainer = card.querySelector('.bg-gradient-to-br');
+    if (gradContainer) {
+      const mode = state.attributes?.hvac_action || state.state;
+      const modeColors = {
+        cooling: 'from-blue-500/20 to-cyan-500/20', heating: 'from-orange-500/20 to-red-500/20',
+        idle: 'from-soot/5 to-soot/5', off: 'from-soot/5 to-soot/5',
+        drying: 'from-amber-500/20 to-yellow-500/20', fan: 'from-teal-500/20 to-emerald-500/20',
+      };
+      const darkGradients = {
+        cooling: 'dark:from-blue-500/10 dark:to-cyan-500/10', heating: 'dark:from-orange-500/10 dark:to-red-500/10',
+        idle: 'dark:from-white/5 dark:to-white/5', off: 'dark:from-white/5 dark:to-white/5',
+        drying: 'dark:from-amber-500/10 dark:to-yellow-500/10', fan: 'dark:from-teal-500/10 dark:to-emerald-500/10',
+      };
+      // Remove old gradient classes and add new
+      gradContainer.className = gradContainer.className.replace(/from-\S+/g, '').replace(/to-\S+/g, '').replace(/dark:from-\S+/g, '').replace(/dark:to-\S+/g, '').trim();
+      const gradClass = modeColors[mode] || modeColors.idle;
+      const darkGradClass = darkGradients[mode] || darkGradients.idle;
+      gradClass.split(' ').forEach(c => gradContainer.classList.add(c));
+      darkGradClass.split(' ').forEach(c => gradContainer.classList.add(c));
+    }
+  }
+}
+
+function updateLockCard(eid, state) {
+  const locked = state.state === 'locked';
+  const supportsOpen = (Number(state.attributes?.supported_features) & 1) !== 0;
+  const card = document.getElementById(`card-${cssId(eid)}`);
+  const openBtn = card?.querySelector('[data-action="confirm-lock-open"]');
+  if (Boolean(openBtn) !== supportsOpen) {
+    if (card?.parentElement) {
+      const fresh = document.createElement('div');
+      fresh.innerHTML = buildCard(eid, state);
+      card.parentElement.replaceChild(fresh.firstElementChild, card);
+    }
+    return;
+  }
+  const btn = document.getElementById(`lock-btn-${cssId(eid)}`);
+  if (btn) {
+    btn.className = `w-full py-3 rounded-xl font-display font-semibold text-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.98] ${
+      locked ? 'text-primary bg-primary/10' : 'text-ink bg-ink/10'
+    }`;
+    btn.innerHTML = `<span aria-hidden="true" class="material-symbols-outlined text-lg">${locked ? 'lock' : 'lock_open'}</span>${esc(locked ? tr('lock.tap_unlock') : tr('lock.tap_lock'))}`;
+    btn.dataset.locked = String(locked);
+  }
+}
+
+function updateMediaCard(eid, state) {
+  const playing = state.state === 'playing';
+  const btn = document.getElementById(`play-btn-${cssId(eid)}`);
+  if (btn) {
+    btn.innerHTML = `<span aria-hidden="true" class="material-symbols-outlined filled text-on-primary text-xl">${playing ? 'pause' : 'play_arrow'}</span>`;
+    btn.dataset.service = playing ? 'media_pause' : 'media_play';
+  }
+  const titleEl = document.getElementById(`media-title-${cssId(eid)}`);
+  if (titleEl) titleEl.textContent = state.attributes?.media_title || state.state;
+  const artistEl = document.getElementById(`media-artist-${cssId(eid)}`);
+  if (artistEl) artistEl.textContent = state.attributes?.media_artist || state.attributes?.source || '';
+  const vol = document.getElementById(`vol-${cssId(eid)}`);
+  if (vol) {
+    const v = Math.round((state.attributes?.volume_level ?? 0.5) * 100);
+    vol.value = v;
+    document.getElementById(`vol-val-${cssId(eid)}`).textContent = v + '%';
+  }
+}
+
+function updateFanCard(eid, state, card) {
+  const on = state.state === 'on';
+  const toggle = card.querySelector('.toggle-track');
+  if (toggle) {
+    toggle.classList.toggle('on', on);
+    toggle.setAttribute('aria-checked', String(on));
+  }
+
+  const sliderSection = card.querySelector('[data-slider-section]');
+  const hasSlider = sliderSection && sliderSection.querySelector('input[type=range]');
+
+  if ((on && !hasSlider) || (!on && hasSlider)) {
+    const parent = card.parentElement;
+    const newCard = document.createElement('div');
+    newCard.innerHTML = buildCard(eid, state);
+    parent.replaceChild(newCard.firstElementChild, card);
+    // Re-query to apply pulse to the new element
+    const freshCard = document.getElementById(`card-${cssId(eid)}`);
+    if (freshCard) {
+      freshCard.classList.remove('pulse');
+      void freshCard.offsetWidth;
+      freshCard.classList.add('pulse');
+    }
+  } else if (on && hasSlider) {
+    const pct = state.attributes?.percentage ?? 0;
+    const slider = document.getElementById(`fan-${cssId(eid)}`);
+    if (slider) {
+      slider.value = pct;
+      document.getElementById(`fan-val-${cssId(eid)}`).textContent = pct + '%';
+    }
+  }
+}
+
+// ── Commands ─────────────────────────────────────────────────────────
+function showToast(msg, type = 'error') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast-in flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-display font-medium shadow-lg border ${
+    type === 'error'
+      ? 'bg-red-50 dark:bg-red-950 text-primary border-red-200 dark:border-red-800'
+      : 'bg-blue-50 dark:bg-blue-950 text-ink border-blue-200 dark:border-blue-800'
+  }`;
+  el.innerHTML = `<span aria-hidden="true" class="material-symbols-outlined text-base">${type === 'error' ? 'error' : 'check_circle'}</span>${esc(msg)}`;
+  container.appendChild(el);
+  setTimeout(() => { el.classList.add('toast-out'); setTimeout(() => el.remove(), 200); }, 3000);
+}
+
+{% if requires_location %}
+// ── Location for proximity-gated controls ────────────────────────────
+// Emitted only for a token that actually has a gated entity — see
+// REQUIRES_LOCATION above. The fix is asked for when the guest presses the
+// gated control rather than on page load, so the browser's permission prompt
+// arrives with an obvious reason attached instead of ambushing someone who
+// only opened the link to turn a lamp on.
+//
+// The coordinates go to the server and the server decides; nothing here judges
+// whether the guest is home. A guest who edits this can send whatever they
+// like, which is exactly why the check is on the other end.
+const LOCATION_TIMEOUT_MS = 20000;
+
+function requestLocationFix() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) {
+      // Geolocation is a secure-context API — over a plain http:// link it is
+      // simply absent, which is much the likeliest way to land here.
+      showToast(tr('location.needs_https'));
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        timestamp: pos.timestamp,
+      }),
+      err => {
+        showToast(err.code === err.PERMISSION_DENIED
+          ? tr('location.permission')
+          : tr('location.failed'));
+        resolve(null);
+      },
+      // maximumAge 0 so the device measures now instead of handing back a fix
+      // from wherever the guest last was: the server refuses stale ones, and
+      // being refused off the back of a silent cache hit is baffling.
+      { enableHighAccuracy: true, timeout: LOCATION_TIMEOUT_MS, maximumAge: 0 },
+    );
+  });
+}
+{% endif %}
+
+// The refusals a gated control repeats to the guest, keyed by the server's
+// exact wording. The server answers in English — a detail is part of the API
+// that scripts and tests read, and a request carries no language worth
+// trusting — so the page translates the ones it knows and shows anything else
+// as it was sent. tests/test_i18n.py checks that each of these is still a
+// message app/routers/guest.py raises, so a reworded refusal cannot silently
+// drop out of translation.
+const SERVER_ERROR_KEYS = {
+  'This control needs your location': 'server.location_needed',
+  'Your location is out of date — try again': 'server.location_stale',
+  "Can't check your location right now": 'server.location_unavailable',
+  'You need to be at the property to use this': 'server.not_at_property',
+  'Too many location checks — please wait a minute': 'server.location_rate_limited',
+  'This control only works when you are on the home network': 'server.home_network_only',
+};
+
+function serverErrorText(detail) {
+  if (typeof detail !== 'string') return '';
+  const key = SERVER_ERROR_KEYS[detail];
+  return key ? tr(key) : detail;
+}
+
+async function sendCmd(entityId, domain, service, extraData = {}) {
+  const body = { entity_id: entityId, service: `${domain}.${service}`, data: extraData };
+  const gated = requiresLocation(entityId);
+  // Home-network-only controls explain their refusal the same way, so a guest
+  // off the Wi-Fi is told why rather than seeing a bare "Command failed".
+  const localOnly = Boolean(entityMeta[entityId]?.require_local_network);
+  if (gated) {
+    const fix = await requestLocationFix();
+    if (!fix) return;  // requestLocationFix has already said why
+    body.location = fix;
+  }
+  try {
+    const r = await fetch(`${BASE}/g/${SLUG}/command`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (r.status === 410) { showExpired(); return; }
+    if (r.status === 401) { showPinEntry(); return; }
+    if (await isDeviceRefusal(r)) { reloadForDevice(); return; }
+    if (r.status === 403 || r.status === 503) {
+      // Outside the link's access — a weekly window shut, or the schedule
+      // cannot be checked. The page reloads into the countdown rather than
+      // leaving a live-looking control that every tap will refuse.
+      const err = await r.clone().json().catch(() => ({}));
+      if (err.detail && typeof err.detail === 'object' && 'opens_at' in err.detail) {
+        location.reload();
+        return;
+      }
+    }
+    if ((gated || localOnly) && !r.ok) {
+      // A gated control's refusal carries a reason worth repeating — "you need
+      // to be at the property", "your location is out of date". Every other
+      // path keeps the generic message so no endpoint's wording leaks into the
+      // guest UI.
+      const err = await r.json().catch(() => ({}));
+      showToast(serverErrorText(err.detail) || tr('command.failed'));
+      return;
+    }
+    if (r.status === 429) { showToast(tr('command.rate_limited')); return; }
+    if (!r.ok) { showToast(tr('command.failed')); return; }
+    // Present only on a use-limited link. The last use is spent: the server
+    // has already hung up the other tabs on it, and this one says so too.
+    const result = await r.json().catch(() => ({}));
+    if (result.uses_remaining === 0) showExpired('used');
+    else if (typeof result.uses_remaining === 'number') {
+      renderUsesLeft(result.uses_remaining);
+      showToast(trn('command.uses_left', result.uses_remaining));
+    }
+  } catch {
+    showToast(tr('command.offline'));
+  }
+}
+
+// The persistent counter exists only when the admin enabled it for this link,
+// so every other page finds no element and does nothing.
+function renderUsesLeft(n) {
+  const box = document.getElementById('uses-left');
+  const text = document.getElementById('uses-left-text');
+  if (!box || !text) return;
+  box.dataset.uses = String(n);
+  text.textContent = trn('command.uses_left', n);
+}
+(function initUsesLeft() {
+  const run = () => {
+    const box = document.getElementById('uses-left');
+    if (box) renderUsesLeft(Number(box.dataset.uses));
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
+})();
+
+function sendToggle(eid, domain) {
+  const newState = states[eid]?.state === 'on' ? 'turn_off' : 'turn_on';
+  // Optimistic update to prevent double-fire
+  if (states[eid]) states[eid] = { ...states[eid], state: newState === 'turn_on' ? 'on' : 'off' };
+  sendCmd(eid, domain, newState);
+}
+function sendPickerValue(eid, value) {
+  if (!value) return;
+  const domain = eid.split('.')[0];
+  // HA wants whole seconds, and names the same value differently per domain.
+  const withSeconds = v => (v.length === 5 ? `${v}:00` : v);
+  const asDatetime = v => v.replace('T', ' ') + (v.length === 16 ? ':00' : '');
+  if (domain === 'time') { sendCmd(eid, 'time', 'set_value', { time: withSeconds(value) }); return; }
+  if (domain === 'datetime') { sendCmd(eid, 'datetime', 'set_value', { datetime: asDatetime(value) }); return; }
+  const mode = pickerMode(domain, states[eid] || {});
+  const field = mode === 'date' ? { date: value }
+    : mode === 'time' ? { time: withSeconds(value) }
+    : { datetime: asDatetime(value) };
+  sendCmd(eid, 'input_datetime', 'set_datetime', field);
+}
+function sendBrightness(eid, pct) { sendCmd(eid, 'light', 'turn_on', { brightness: Math.round((parseInt(pct) / 100) * 255) }); }
+function sendMediaCmd(eid, service) { sendCmd(eid, 'media_player', service); }
+function sendVolume(eid, pct) { sendCmd(eid, 'media_player', 'volume_set', { volume_level: parseInt(pct) / 100 }); }
+
+function setHvacMode(eid, mode) {
+  sendCmd(eid, 'climate', 'set_hvac_mode', { hvac_mode: mode });
+}
+
+let tempValues = {};
+function adjustTemp(eid, delta) {
+  if (!(eid in tempValues)) tempValues[eid] = states[eid]?.attributes?.temperature ?? 20;
+  tempValues[eid] = Math.round((tempValues[eid] + delta) * 2) / 2;
+  const unit = states[eid]?.attributes?.temperature_unit || '\u00b0';
+  const tgtEl = document.getElementById(`temp-tgt-${cssId(eid)}`);
+  const humidity = states[eid]?.attributes?.current_humidity;
+  if (tgtEl) tgtEl.textContent = climateTargetText(tempValues[eid], unit, humidity);
+  sendCmd(eid, 'climate', 'set_temperature', { temperature: tempValues[eid] });
+}
+
+// ── Lock Confirm (bottom sheet) ──────────────────────────────────────
+function confirmLock(eid, currentlyLocked) {
+  document.getElementById('sheet-title').textContent = currentlyLocked ? tr('lock.unlock_title') : tr('lock.lock_title');
+  document.getElementById('sheet-body').textContent = currentlyLocked
+    ? tr('lock.unlock_body') : tr('lock.lock_body');
+  sheetCallback = () => { sendCmd(eid, 'lock', currentlyLocked ? 'unlock' : 'lock'); closeSheet(); };
+  openSheet();
+}
+
+// ── Alarm Confirm (shared bottom sheet) ──────────────────────────────
+// The code input lives in the same sheet as the lock confirmations rather than
+// in a second modal. It is only revealed for panels that ask for a code.
+function showSheetCode(inputMode) {
+  const input = document.getElementById('sheet-code');
+  input.value = '';
+  document.getElementById('sheet-code-wrap').classList.toggle('hidden', !inputMode);
+  if (inputMode) input.setAttribute('inputmode', inputMode);
+}
+
+function confirmAlarm(eid, service, title, body) {
+  const attrs = states[eid]?.attributes || {};
+  // code_arm_required: false means the panel only wants the code to disarm.
+  const needsCode = Boolean(attrs.code_format)
+    && (service === 'alarm_disarm' || attrs.code_arm_required !== false);
+  document.getElementById('sheet-title').textContent = title;
+  document.getElementById('sheet-body').textContent = body;
+  showSheetCode(needsCode ? (attrs.code_format === 'number' ? 'numeric' : 'text') : null);
+  sheetCallback = () => {
+    const code = document.getElementById('sheet-code').value;
+    sendCmd(eid, 'alarm_control_panel', service, code ? { code } : {});
+    closeSheet();
+  };
+  openSheet();
+}
+
+// ── Colour Wheel (shared bottom sheet) ───────────────────────────────
+// The wheel rides in the same sheet as the lock and alarm confirmations, so
+// open/close, the backdrop and the focus trap are the ones already written.
+// It applies live and commits nothing, so it drops Confirm and Cancel reads
+// "Done" while it is up.
+let wheelSheetEid = null;
+// The hue/saturation the thumb is drawn at. Kept here rather than read back
+// from states[] so a drag or a key repeat moves the thumb at pointer speed
+// instead of at the speed HA echoes the change over SSE.
+let wheelHs = [0, 0];
+let wheelSend = { lastSent: 0, lastRgb: null };
+let tempSend = { lastSent: 0, lastKelvin: null };
+
+function positionWheelThumb(rgb) {
+  wheelHs = rgbToHs(rgb);
+  renderWheelThumb();
+}
+
+function renderWheelThumb() {
+  const thumb = document.getElementById('sheet-wheel-thumb');
+  if (!thumb) return;
+  const [dx, dy] = hsToOffset(wheelHs[0], wheelHs[1]);
+  thumb.style.left = `calc(50% + ${dx}px)`;
+  thumb.style.top = `calc(50% + ${dy}px)`;
+  const wheel = document.getElementById('sheet-wheel');
+  if (wheel) wheel.setAttribute('aria-valuenow', String(Math.round(wheelHs[0])));
+}
+
+// Slides the temperature track under the pointer: min/max come from the bulb,
+// so the ends of the track are the ends of what it can do.
+function positionTempSlider(state) {
+  const slider = document.getElementById('sheet-temp');
+  if (!slider || !wheelSheetEid) return;
+  const [min, max] = lightTempRange(state);
+  const raw = Number(state?.attributes?.color_temp_kelvin);
+  // A bulb sitting in colour mode reports no kelvin; start the slider halfway
+  // rather than pinned to one end.
+  const kelvin = Number.isFinite(raw) && raw > 0
+    ? Math.min(Math.max(Math.round(raw), min), max)
+    : Math.round((min + max) / 2);
+  slider.min = min;
+  slider.max = max;
+  slider.value = kelvin;
+  slider.style.background =
+    `linear-gradient(to right, ${kelvinCss(min)}, ${kelvinCss((min + max) / 2)}, ${kelvinCss(max)})`;
+  document.getElementById('sheet-temp-val').textContent = kelvin + 'K';
+}
+
+// The switch only decides which widget is on screen; it sends nothing. A tap
+// that silently recoloured the bulb would be a surprise.
+function showColorTab(tab) {
+  const white = tab === 'white';
+  document.getElementById('sheet-wheel-wrap').classList.toggle('hidden', white);
+  document.getElementById('sheet-temp-wrap').classList.toggle('hidden', !white);
+  for (const [id, active] of [['sheet-tab-color', !white], ['sheet-tab-white', white]]) {
+    const btn = document.getElementById(id);
+    btn.setAttribute('aria-pressed', String(active));
+    btn.classList.toggle('bg-surface-light', active);
+    btn.classList.toggle('dark:bg-surface-dark', active);
+    btn.classList.toggle('shadow-sm', active);
+    btn.classList.toggle('text-muted', !active);
+  }
+}
+
+function showSheetWheel(eid) {
+  wheelSheetEid = eid;
+  wheelSend = { lastSent: -WHEEL_THROTTLE_MS, lastRgb: null };
+  tempSend = { lastSent: -WHEEL_THROTTLE_MS, lastKelvin: null };
+  const state = eid ? states[eid] : null;
+  const wheel = Boolean(eid) && showsColorWheel(eid, state);
+  const temp = Boolean(eid) && showsColorTemp(eid, state);
+  const tabs = document.getElementById('sheet-color-tabs');
+  tabs.classList.toggle('hidden', !(wheel && temp));
+  tabs.classList.toggle('flex', wheel && temp);
+  document.getElementById('sheet-ok').classList.toggle('hidden', Boolean(eid));
+  document.getElementById('sheet-cancel').textContent = eid ? tr('sheet.done') : tr('sheet.cancel');
+  if (!eid) {
+    document.getElementById('sheet-wheel-wrap').classList.add('hidden');
+    document.getElementById('sheet-temp-wrap').classList.add('hidden');
+    return;
+  }
+  // Open on the mode the light is actually in, so the sheet matches the swatch.
+  showColorTab(temp && (!wheel || state?.attributes?.color_mode === 'color_temp') ? 'white' : 'color');
+  if (wheel) positionWheelThumb(state?.attributes?.rgb_color);
+  if (temp) positionTempSlider(state);
+}
+
+function openColorSheet(eid) {
+  document.getElementById('sheet-title').textContent = displayName(eid, states[eid]);
+  document.getElementById('sheet-body').textContent = showsColorWheel(eid, states[eid])
+    ? tr('color.wheel_hint')
+    : tr('color.temp_hint');
+  showSheetWheel(eid);
+  openSheet();
+}
+
+function confirmLockOpen(eid) {
+  document.getElementById('sheet-title').textContent = tr('lock.open_title');
+  document.getElementById('sheet-body').textContent = tr('lock.open_body');
+  sheetCallback = () => { sendCmd(eid, 'lock', 'open'); closeSheet(); };
+  openSheet();
+}
+
+function openSheet() {
+  const backdrop = document.getElementById('sheet-backdrop');
+  backdrop.classList.remove('hidden');
+  backdrop.classList.add('flex');
+  document.getElementById('sheet-ok').onclick = sheetCallback;
+  const dialog = backdrop.querySelector('[role="dialog"]');
+  if (dialog) trapFocus(dialog);
+}
+
+function closeSheet() {
+  const backdrop = document.getElementById('sheet-backdrop');
+  const dialog = backdrop.querySelector('[role="dialog"]');
+  if (dialog) dialog.removeEventListener('keydown', _handleTrapKeydown);
+  backdrop.classList.remove('flex');
+  backdrop.classList.add('hidden');
+  showSheetCode(null);  // never leave an alarm code sitting in the DOM
+  showSheetWheel(null);
+  sheetCallback = null;
+  releaseFocus();
+}
+
+// ── Sensor History (bottom sheet) ────────────────────────────────────
+// uPlot is fetched the first time a guest opens a chart, so a link with no
+// shared history never downloads it. The tags are same-origin, which the
+// page's script-src 'self' admits without a nonce.
+const HISTORY_CHART_HEIGHT = 240;
+let historyEid = null;
+let historyHours = 24;
+let historyPlot = null;
+let historyRequest = 0;
+let uplotLoading = null;
+
+// Comparing sensors. A sensor's chart can have the link's other shared sensors
+// of the same unit laid over it, each in a colour of its own: [light, dark],
+// a set checked for telling its neighbours apart with a colour deficiency.
+// The colour belongs to the sensor (its place among the ones it can be
+// compared with), never to the order they were switched on in, so a line
+// keeps its colour as others come and go.
+const HISTORY_SERIES_COLORS = [
+  ['#2a78d6', '#3987e5'], ['#eb6834', '#d95926'], ['#1baf7a', '#199e70'],
+  ['#eda100', '#c98500'], ['#e87ba4', '#d55181'], ['#008300', '#008300'],
+];
+// Every line on the chart is a request of its own, and switching one on or off
+// redraws them all. What was fetched is kept for as long as the server would
+// answer from its own cache anyway, so only a new line costs a request.
+const HISTORY_REUSE_MS = 60000;
+const historyFetched = new Map();
+// The sensors the guest draws together, as { entity_id: unit }, remembered per
+// link so the combined chart is one tap away on the next visit. The unit is
+// kept because an unavailable sensor reports none, and that is when its line
+// is most worth seeing next to the others.
+const HISTORY_COMPARE_KEY = 'hp-compare:' + SLUG;
+const historyCompare = {};
+
+// localStorage can be missing or throw (private mode, storage blocked), and
+// what it holds may not be what this page wrote. Comparing then still works,
+// it just starts from nothing on the next visit.
+function loadHistoryCompare() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(HISTORY_COMPARE_KEY) || '{}');
+    for (const [id, unit] of Object.entries(stored)) {
+      if (typeof unit === 'string') historyCompare[id] = unit;
+    }
+  } catch { /* nothing remembered */ }
+}
+loadHistoryCompare();
+
+function saveHistoryCompare() {
+  try { window.localStorage.setItem(HISTORY_COMPARE_KEY, JSON.stringify(historyCompare)); } catch { /* not remembered */ }
+}
+
+// A sensor's unit, falling back to the one it had when the guest last compared
+// it: Home Assistant drops the attributes of an unavailable entity.
+function historyUnit(eid) {
+  return states[eid]?.attributes?.unit_of_measurement || historyCompare[eid] || '';
+}
+
+// The sensors whose lines can share a chart with eid's, itself among them, in
+// page order: the ones on the link with their history shared and the same
+// unit. One axis only, so a sensor in another unit is never offered, and one
+// with no unit has nothing that says another measures the same thing.
+function historyPeers(eid) {
+  const unit = historyUnit(eid);
+  if (!unit) return [eid];
+  return entityOrder.filter(id => id === eid || (
+    id.split('.')[0] === 'sensor' && entityOption(id, 'show_history') && historyUnit(id) === unit
+  ));
+}
+
+// One row per peer: { eid, slot, on, blocked }. `slot` is the sensor's colour.
+// `on` is drawn: always the sensor the sheet was opened for, and, once the
+// guest has compared it with anything, every peer they are comparing. With
+// more peers than colours two of them share one, and `blocked` marks the one
+// that has to wait for the other to be switched off.
+function historySeries(eid) {
+  const rows = historyPeers(eid).map((id, i) => (
+    { eid: id, slot: i % HISTORY_SERIES_COLORS.length, on: false, blocked: false }
+  ));
+  const taken = new Set();
+  const draw = row => {
+    if (taken.has(row.slot)) return;
+    taken.add(row.slot);
+    row.on = true;
+  };
+  const comparing = id => Object.prototype.hasOwnProperty.call(historyCompare, id);
+  const own = rows.find(r => r.eid === eid);
+  if (own) draw(own);
+  if (comparing(eid)) rows.filter(r => comparing(r.eid)).forEach(draw);
+  for (const row of rows) row.blocked = !row.on && taken.has(row.slot);
+  return rows;
+}
+
+function historySeriesColor(slot) {
+  return HISTORY_SERIES_COLORS[slot][document.documentElement.classList.contains('dark') ? 1 : 0];
+}
+
+// The rows under the chart: its legend, and for every sensor but the one the
+// sheet was opened for, the switch that draws it. The text stays in the page's
+// own ink; the dot carries the colour, filled when the line is drawn.
+function historyLegendHtml(eid, rows) {
+  if (rows.length < 2) return '';
+  return rows.map(r => {
+    const color = historySeriesColor(r.slot);
+    const body = `<span aria-hidden="true" class="w-3 h-3 rounded-full border-2 flex-shrink-0" style="border-color:${color};${r.on ? `background-color:${color}` : ''}"></span>
+      <span class="flex-1 min-w-0 truncate">${esc(displayName(r.eid, states[r.eid]))}</span>
+      <span class="text-muted tabular-nums flex-shrink-0" data-history-value="${esc(r.eid)}"></span>`;
+    const layout = 'w-full flex items-center gap-2.5 py-2 rounded-lg text-sm text-left';
+    if (r.eid === eid) return `<div class="${layout}">${body}</div>`;
+    return `<button type="button" data-action="history-compare" data-eid="${esc(r.eid)}" aria-pressed="${r.on}"${r.blocked ? ' disabled' : ''}
+      class="${layout}${r.on ? '' : ' text-muted'}${r.blocked ? ' opacity-40' : ''}">${body}</button>`;
+  }).join('');
+}
+
+function renderHistoryLegend(rows) {
+  document.getElementById('history-legend').classList.toggle('hidden', rows.length < 2);
+  document.getElementById('history-legend-rows').innerHTML = historyLegendHtml(historyEid, rows);
+}
+
+// Switching a peer on remembers both ends, so the pair is drawn together from
+// whichever of them the guest opens next. Switching it off forgets only that one.
+function toggleHistoryCompare(eid) {
+  if (!historyEid || eid === historyEid) return;
+  const row = historySeries(historyEid).find(r => r.eid === eid);
+  if (!row || row.blocked) return;
+  if (row.on) {
+    delete historyCompare[eid];
+  } else {
+    historyCompare[historyEid] = historyUnit(historyEid);
+    historyCompare[eid] = historyUnit(eid);
+  }
+  saveHistoryCompare();
+  // The legend is redrawn, which would drop a keyboard user's place in it.
+  loadHistory(true);
+  document.querySelector(`[data-action="history-compare"][data-eid="${eid}"]`)?.focus();
+}
+
+async function fetchHistory(eid, hours) {
+  const key = `${eid}|${hours}`;
+  const kept = historyFetched.get(key);
+  if (kept && Date.now() - kept.at < HISTORY_REUSE_MS) return kept.points;
+  const r = await fetch(`${BASE}/g/${SLUG}/history/${encodeURIComponent(eid)}?hours=${hours}`);
+  if (!r.ok) throw new Error(String(r.status));
+  const points = (await r.json()).points;
+  historyFetched.set(key, { at: Date.now(), points });
+  return points;
+}
+
+function loadUplot() {
+  if (window.uPlot) return Promise.resolve();
+  if (!uplotLoading) {
+    uplotLoading = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = `${BASE}/static/uPlot.min.css?v=${BUILD_VERSION}`;
+      document.head.appendChild(css);
+      const script = document.createElement('script');
+      script.src = `${BASE}/static/uPlot.iife.min.js?v=${BUILD_VERSION}`;
+      script.onload = resolve;
+      // Forget the failure, so the next open tries again rather than
+      // replaying it.
+      script.onerror = () => { uplotLoading = null; script.remove(); reject(new Error('uPlot')); };
+      document.head.appendChild(script);
+    });
+  }
+  return uplotLoading;
+}
+
+// "6h", "24 Std.", "7 d" — the browser's own short units, so the range
+// buttons need no strings of their own in each language.
+function historyRangeLabel(hours) {
+  const days = hours > 24 && hours % 24 === 0;
+  const n = days ? hours / 24 : hours;
+  try {
+    return new Intl.NumberFormat(uiLocale(), { style: 'unit', unit: days ? 'day' : 'hour', unitDisplay: 'narrow' }).format(n);
+  } catch {
+    return days ? `${n}d` : `${n}h`;
+  }
+}
+
+function setHistoryStatus(text) {
+  const el = document.getElementById('history-status');
+  el.textContent = text || '';
+  el.classList.toggle('hidden', !text);
+}
+
+function destroyHistoryPlot() {
+  if (historyPlot) historyPlot.destroy();
+  historyPlot = null;
+  document.getElementById('history-readout').textContent = '';
+}
+
+function openHistory(eid) {
+  // A pending link has no state to chart, and the server would refuse it.
+  if (PENDING) return;
+  historyEid = eid;
+  document.getElementById('history-title').textContent = displayName(eid, states[eid]);
+  document.querySelectorAll('[data-action="history-range"]').forEach(b => {
+    b.textContent = historyRangeLabel(Number(b.dataset.hours));
+  });
+  const backdrop = document.getElementById('history-backdrop');
+  backdrop.classList.remove('hidden');
+  backdrop.classList.add('flex');
+  trapFocus(backdrop.querySelector('[role="dialog"]'));
+  showHistoryRange(historyHours);
+}
+
+function closeHistory() {
+  const backdrop = document.getElementById('history-backdrop');
+  backdrop.querySelector('[role="dialog"]').removeEventListener('keydown', _handleTrapKeydown);
+  backdrop.classList.remove('flex');
+  backdrop.classList.add('hidden');
+  historyEid = null;
+  historyRequest++;  // a fetch still in flight lands on nothing
+  destroyHistoryPlot();
+  setHistoryStatus('');
+  releaseFocus();
+}
+
+async function showHistoryRange(hours) {
+  historyHours = hours;
+  document.querySelectorAll('[data-action="history-range"]').forEach(btn => {
+    const active = Number(btn.dataset.hours) === hours;
+    btn.setAttribute('aria-pressed', String(active));
+    btn.classList.toggle('bg-surface-light', active);
+    btn.classList.toggle('dark:bg-surface-dark', active);
+    btn.classList.toggle('shadow-sm', active);
+    btn.classList.toggle('text-muted', !active);
+  });
+  await loadHistory(false);
+}
+
+// Fetch and draw every line the sheet is showing. keepChart leaves the chart
+// that is up where it is until the new one is ready, for switching a peer on
+// or off: only a change of range empties the sheet first.
+async function loadHistory(keepChart) {
+  const eid = historyEid;
+  const hours = historyHours;
+  const request = ++historyRequest;
+  const rows = historySeries(eid);
+  renderHistoryLegend(rows);
+  if (!keepChart || !historyPlot) {
+    destroyHistoryPlot();
+    setHistoryStatus(tr('history.loading'));
+  }
+  const series = rows.filter(r => r.on);
+  let fetched;
+  try {
+    [, ...fetched] = await Promise.all([
+      loadUplot(),
+      // The chart stands or falls with its own sensor. A peer that cannot be
+      // had (unshared since the page loaded, or one request too many) is left
+      // off it rather than taking the others down too.
+      ...series.map(r => fetchHistory(r.eid, hours).catch(err => {
+        if (r.eid === eid) throw err;
+        return null;
+      })),
+    ]);
+  } catch {
+    if (request === historyRequest) {
+      destroyHistoryPlot();
+      setHistoryStatus(tr('history.error'));
+    }
+    return;
+  }
+  // The guest moved on — another range, another peer, or closed the sheet —
+  // while this loaded.
+  if (request !== historyRequest) return;
+  destroyHistoryPlot();
+  series.forEach((r, i) => { r.points = fetched[i]; });
+  drawHistory(eid, series.filter(r => r.points), hours, rows.length > 1);
+}
+
+// The theme's colours as the canvas needs them: uPlot draws with strings, not
+// classes, so they are read off elements that already wear the classes.
+function historyColors() {
+  const muted = getComputedStyle(document.getElementById('history-status')).color;
+  const primary = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim();
+  const rgb = (muted.match(/\d+(\.\d+)?/g) || ['128', '128', '128']).slice(0, 3).join(' ');
+  return {
+    line: primary ? `rgb(${primary})` : muted,
+    fill: primary ? `rgb(${primary} / 0.12)` : 'transparent',
+    text: muted,
+    grid: `rgb(${rgb} / 0.18)`,
+  };
+}
+
+// The chart's data as uPlot takes it: the times, then each line's values at
+// them. series is the rows being drawn, each with its points.
+function historyData(series, now) {
+  const tables = series.map(s => {
+    const xs = [];
+    const ys = [];
+    for (const [t, v] of s.points) {
+      xs.push(t);
+      ys.push(v);
+    }
+    // HA's last row is the last change, not now: carry the live reading to the
+    // right edge, so a sensor that has held one value for hours still reaches it.
+    const live = states[s.eid]?.state;
+    const liveValue = live === undefined || live === null || live === '' ? NaN : Number(live);
+    if (!xs.length || now > xs[xs.length - 1]) {
+      xs.push(now);
+      ys.push(Number.isFinite(liveValue) ? liveValue : null);
+    }
+    return [xs, ys];
+  });
+  if (tables.length === 1) return tables[0];
+  // The sensors report at their own times, so the lines are put on one shared
+  // set of them. A line then has no value at another's time, and uPlot draws
+  // straight across those. Mode 2 widens each real gap over them, so an outage
+  // still breaks its line.
+  return uPlot.join(tables, tables.map(() => [0, 2]));
+}
+
+// The sheet's own sensor is among the series. legend is whether the rows under
+// the chart are showing: they then carry each line's value, and the readout
+// only the time.
+function drawHistory(eid, series, hours, legend) {
+  const now = Date.now() / 1000 + CLOCK_OFFSET;
+  const data = historyData(series, now);
+  const xs = data[0];
+  if (!data.slice(1).some(ys => ys.some(v => v !== null && v !== undefined))) {
+    setHistoryStatus(tr('history.empty'));
+    return;
+  }
+  setHistoryStatus('');
+
+  const unit = historyUnit(eid);
+  const numberFmt = new Intl.NumberFormat(uiLocale(), { maximumFractionDigits: 2 });
+  const valueText = v => v === null || v === undefined ? '\u2013' : `${numberFmt.format(v)}${unit ? ' ' + unit : ''}`;
+  // Times of day for a day or less; across a week the weekday leads.
+  const tickFmt = new Intl.DateTimeFormat(uiLocale(), hours > 24
+    ? { weekday: 'short', hour: 'numeric' }
+    : { hour: 'numeric', minute: '2-digit' });
+  const hoverFmt = new Intl.DateTimeFormat(uiLocale(), { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const colors = historyColors();
+  const box = document.getElementById('history-chart');
+  const readout = document.getElementById('history-readout');
+  const cells = {};
+  document.querySelectorAll('#history-legend-rows [data-history-value]').forEach(el => {
+    cells[el.dataset.historyValue] = el;
+  });
+  // Each line's latest reading, -1 for one that has none in this range.
+  const lasts = series.map((s, i) => {
+    let at = data[i + 1].length - 1;
+    while (at >= 0 && (data[i + 1][at] === null || data[i + 1][at] === undefined)) at--;
+    return at;
+  });
+  const latest = Math.max(...lasts);
+  // idx is the time under the cursor and idxs each line's own nearest point to
+  // it, which is the point uPlot marks; with no cursor, the latest readings.
+  const showReading = (idx, idxs) => {
+    const values = series.map((s, i) => {
+      const at = idx === null || idx === undefined ? lasts[i] : idxs?.[i + 1] ?? idx;
+      return valueText(at < 0 ? null : data[i + 1][at]);
+    });
+    const time = hoverFmt.format(new Date(xs[idx ?? latest] * 1000));
+    if (!legend) {
+      readout.textContent = `${values[0]} · ${time}`;
+      return;
+    }
+    readout.textContent = time;
+    series.forEach((s, i) => {
+      if (cells[s.eid]) cells[s.eid].textContent = values[i];
+    });
+  };
+  const font = '11px system-ui, -apple-system, sans-serif';
+  const axis = { stroke: colors.text, font, grid: { stroke: colors.grid, width: 1 }, ticks: { show: false } };
+
+  historyPlot = new uPlot({
+    width: box.clientWidth,
+    height: HISTORY_CHART_HEIGHT,
+    cursor: { drag: { x: false, y: false }, points: { size: 8 } },
+    // uPlot's own legend is a table in its own type; the readout and the rows
+    // under the chart say the same in the page's.
+    legend: { show: false },
+    scales: { x: { time: true, range: () => [now - hours * 3600, now] } },
+    series: [
+      {},
+      ...series.map(s => {
+        // A sensor with nothing to be compared with keeps the theme's colour.
+        // One that has takes its own, and the wash under a line goes as soon
+        // as there are two, where each would muddy the other.
+        const stroke = legend ? historySeriesColor(s.slot) : colors.line;
+        const fill = !legend ? colors.fill : series.length === 1 ? `${stroke}1f` : undefined;
+        return {
+          label: displayName(s.eid, states[s.eid]),
+          stroke,
+          fill,
+          width: 2,
+          spanGaps: false,
+          points: { show: false },
+        };
+      }),
+    ],
+    axes: [
+      { ...axis, values: (u, ticks) => ticks.map(t => tickFmt.format(new Date(t * 1000))) },
+      { ...axis, size: 48, values: (u, ticks) => ticks.map(v => numberFmt.format(v)) },
+    ],
+    hooks: {
+      // The point under the cursor, or the latest reading when there is none.
+      setCursor: [u => showReading(u.cursor.idx, u.cursor.idxs)],
+      // uPlot follows a mouse on its own; a finger is fed to it here, so a
+      // guest on a phone can drag along the line to read it.
+      init: [u => {
+        u.over.style.touchAction = 'pan-y';
+        const follow = e => {
+          if (e.pointerType === 'mouse') return;
+          const r = u.over.getBoundingClientRect();
+          u.setCursor({ left: e.clientX - r.left, top: e.clientY - r.top });
+        };
+        u.over.addEventListener('pointerdown', follow);
+        u.over.addEventListener('pointermove', follow);
+      }],
+    },
+  }, data, box);
+  showReading(null);
+}
+
+window.addEventListener('resize', () => {
+  if (!historyPlot) return;
+  historyPlot.setSize({ width: document.getElementById('history-chart').clientWidth, height: HISTORY_CHART_HEIGHT });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && historyEid) closeHistory();
+});
+
+// ── Delegated Event Handlers ─────────────────────────────────────
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  const eid = el.dataset.eid;
+
+  switch (action) {
+    case 'toggle':
+      sendToggle(eid, el.dataset.domain);
+      el.classList.toggle('on');
+      el.setAttribute('aria-checked', String(el.classList.contains('on')));
+      break;
+    case 'card-toggle': {
+      // A nested element carrying its own data-action already wins via
+      // closest(), but the brightness slider uses data-range-action and would
+      // otherwise toggle the light off mid-drag. Same for any raw control.
+      if (e.target.closest('[data-range-action], input, button, a, img')) break;
+      sendToggle(eid, el.dataset.domain);
+      const track = el.querySelector('.toggle-track');
+      if (track) {
+        track.classList.toggle('on');
+        track.setAttribute('aria-checked', String(track.classList.contains('on')));
+      }
+      break;
+    }
+    case 'adjust-temp':
+      adjustTemp(eid, parseFloat(el.dataset.delta));
+      break;
+    case 'set-hvac':
+      setHvacMode(eid, el.dataset.mode);
+      break;
+    case 'confirm-lock':
+      confirmLock(eid, el.dataset.locked === 'true');
+      break;
+    case 'confirm-lock-open':
+      confirmLockOpen(eid);
+      break;
+    case 'media-cmd':
+      sendMediaCmd(eid, el.dataset.service);
+      break;
+    case 'cover-cmd':
+      sendCmd(eid, 'cover', el.dataset.service);
+      break;
+    case 'svc-cmd':
+      // Buttons, counters and timers: one tap, one service, no payload.
+      sendCmd(eid, el.dataset.domain, el.dataset.service);
+      break;
+    case 'confirm-alarm':
+      confirmAlarm(eid, el.dataset.service, el.dataset.title, el.dataset.body);
+      break;
+    case 'open-color-sheet':
+      openColorSheet(eid);
+      break;
+    case 'color-tab':
+      showColorTab(el.dataset.tab);
+      break;
+    case 'close-sheet':
+      closeSheet();
+      break;
+    case 'open-history':
+      openHistory(eid);
+      break;
+    case 'history-range':
+      showHistoryRange(Number(el.dataset.hours));
+      break;
+    case 'history-compare':
+      toggleHistoryCompare(eid);
+      break;
+    case 'close-history':
+      closeHistory();
+      break;
+    case 'set-theme':
+      setTheme(el.dataset.theme);
+      break;
+    case 'dismiss-install':
+      dismissInstallBanner();
+      break;
+    case 'group-toggle':
+      toggleGroup(el);
+      break;
+    // Defined by the script right after the info card, which only exists,
+    // with these buttons, when there is text to show.
+    case 'info-collapse':
+      collapseInfoCard();
+      break;
+    case 'info-more':
+      expandInfoCard();
+      break;
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  // Space on a focused range/button/link belongs to that control, not to the
+  // card-toggle wrapper it happens to sit inside.
+  if (e.target.matches('input, button, a, [data-range-action]')) return;
+  const el = e.target.closest('[data-action]');
+  if (!el || el.tagName === 'BUTTON') return; // buttons handle Enter natively
+  e.preventDefault();
+  el.click();
+});
+
+// Range slider delegation
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!el.dataset.rangeAction) return;
+  const display = document.getElementById(el.dataset.displayId);
+  if (display) display.textContent = el.value + (el.dataset.displaySuffix ?? '%');
+  // The temperature slider applies live; the rest commit on release.
+  if (el.dataset.rangeAction === 'color-temp') sendTempColor(false);
+});
+
+document.addEventListener('change', e => {
+  const el = e.target;
+  const eid = el.dataset.eid;
+  // Text, select and date/time widgets commit on change rather than per keystroke.
+  if (el.dataset.valueAction) {
+    const kind = el.dataset.valueAction;
+    if (kind === 'picker') sendPickerValue(eid, el.value);
+    else if (kind === 'text') sendCmd(eid, 'input_text', 'set_value', { value: el.value });
+    else if (kind === 'select') sendCmd(eid, 'input_select', 'select_option', { option: el.value });
+    return;
+  }
+  if (!el.dataset.rangeAction) return;
+  const action = el.dataset.rangeAction;
+  if (action === 'brightness') sendBrightness(eid, el.value);
+  else if (action === 'volume') sendVolume(eid, el.value);
+  else if (action === 'fan-speed') sendCmd(eid, 'fan', 'set_percentage', { percentage: parseInt(el.value) });
+  else if (action === 'input-number') sendCmd(eid, 'input_number', 'set_value', { value: parseFloat(el.value) });
+  else if (action === 'color-temp') sendTempColor(true);
+});
+
+// ── Colour Wheel Drag ────────────────────────────────────────────────
+// The thumb is moved from the pointer position on every move event and the
+// command is throttled independently, so the wheel never waits on HA's echo to
+// catch up. 250ms is four commands a second: the guest command proxy allows
+// COMMAND_BURST_RPM=300/min, which leaves room for taps alongside a continuous
+// drag, and most bulbs cannot fade faster than that anyway. Release always
+// sends, so the colour that sticks is the one under the finger and not
+// whichever throttled tick landed last.
+const WHEEL_THROTTLE_MS = 250;
+let activeWheel = null;  // { rect } for as long as a pointer is down on the wheel
+let activeTemp = false;  // true for as long as a pointer is down on the temperature slider
+
+function applyWheelPointer(e, commit) {
+  const rect = activeWheel.rect;
+  const radius = rect.width / 2;
+  const dx = e.clientX - (rect.left + radius);
+  const dy = e.clientY - (rect.top + radius);
+  let h = Math.atan2(dx, -dy) * 180 / Math.PI;
+  if (h < 0) h += 360;
+  wheelHs = [h, Math.min(Math.hypot(dx, dy) / radius, 1)];
+  renderWheelThumb();
+  sendWheelColor(commit);
+}
+
+// Throttled while the colour is still moving; commit always sends. Shared by
+// the drag and the arrow keys, and reset whenever the sheet opens or closes.
+function sendWheelColor(commit) {
+  const rgb = hsvToRgb(wheelHs[0], wheelHs[1]);
+  const now = performance.now();
+  if (!commit && now - wheelSend.lastSent < WHEEL_THROTTLE_MS) return;
+  // A tap sends on press and again on release; skip the second if it is the
+  // same colour rather than spending a command on it.
+  if (String(rgb) === String(wheelSend.lastRgb)) return;
+  wheelSend = { lastSent: now, lastRgb: rgb };
+  sendCmd(wheelSheetEid, 'light', 'turn_on', { rgb_color: rgb });
+}
+
+document.addEventListener('pointerdown', e => {
+  const wheel = e.target.closest('[data-wheel-action="color"]');
+  if (!wheel || !wheelSheetEid) return;
+  e.preventDefault();
+  // The rect is measured once: the sheet does not move during a drag, and
+  // re-reading layout on every pointermove is what makes a wheel feel laggy.
+  activeWheel = { rect: wheel.getBoundingClientRect() };
+  wheel.setPointerCapture?.(e.pointerId);
+  applyWheelPointer(e, false);
+});
+
+document.addEventListener('pointermove', e => {
+  if (activeWheel) applyWheelPointer(e, false);
+});
+
+document.addEventListener('pointerup', e => {
+  if (!activeWheel) return;
+  applyWheelPointer(e, true);
+  activeWheel = null;
+});
+
+document.addEventListener('pointercancel', () => { activeWheel = null; });
+
+// The temperature slider is a native range, so the browser already tracks the
+// pointer and handles the arrow keys. These only tell HA's echo to keep its
+// hands off the thumb until the drag ends, the same bargain the wheel makes.
+document.addEventListener('pointerdown', e => {
+  if (e.target.closest('[data-range-action="color-temp"]')) activeTemp = true;
+});
+
+document.addEventListener('pointerup', () => { activeTemp = false; });
+document.addEventListener('pointercancel', () => { activeTemp = false; });
+
+// Same throttle and the same send-on-release as the wheel, so the kelvin that
+// sticks is the one the finger left the track on.
+function sendTempColor(commit) {
+  const slider = document.getElementById('sheet-temp');
+  if (!slider || !wheelSheetEid) return;
+  const kelvin = parseInt(slider.value, 10);
+  if (!Number.isFinite(kelvin)) return;
+  const now = performance.now();
+  if (!commit && now - tempSend.lastSent < WHEEL_THROTTLE_MS) return;
+  // Release after a throttled tick that already sent this value: skip it.
+  if (kelvin === tempSend.lastKelvin) return;
+  tempSend = { lastSent: now, lastKelvin: kelvin };
+  sendCmd(wheelSheetEid, 'light', 'turn_on', { color_temp_kelvin: kelvin });
+}
+
+// The wheel is focusable, so it also steps by keyboard: hue sideways,
+// saturation up and down.
+const WHEEL_HUE_STEP = 10;
+const WHEEL_SAT_STEP = 0.1;
+const WHEEL_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+
+document.addEventListener('keydown', e => {
+  const step = WHEEL_KEYS[e.key];
+  if (!step || !wheelSheetEid || !e.target.closest('[data-wheel-action="color"]')) return;
+  e.preventDefault();
+  wheelHs = [
+    (wheelHs[0] + step[0] * WHEEL_HUE_STEP + 360) % 360,
+    Math.min(1, Math.max(0, wheelHs[1] + step[1] * WHEEL_SAT_STEP)),
+  ];
+  renderWheelThumb();
+  // A held arrow repeats at the OS key rate, so it goes through the same throttle.
+  sendWheelColor(false);
+});
+
+// ── Install Banner ───────────────────────────────────────────────────
+function showInstallBanner() {
+  const isPWA = document.documentElement.classList.contains('pwa');
+  if (isPWA) return;
+  if (localStorage.getItem('hp-install-dismissed')) return;
+
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/.test(ua);
+  if (!isIOS && !isAndroid) return; // desktop — skip banner
+
+  const el = document.getElementById('install-instructions');
+  if (!el) return;
+
+  if (isIOS) {
+    el.innerHTML = trHtml('install.ios_html', {}, { icon: installIcon('ios_share') });
+  } else {
+    el.innerHTML = trHtml('install.android_html', {}, { icon: installIcon('more_vert') });
+  }
+
+  document.getElementById('install-banner').classList.remove('hidden');
+}
+
+// The browser-menu glyph the install hint points at. Built here rather than in
+// the catalogue so no translation has to carry — or can break — the markup.
+function installIcon(name) {
+  return `<span class="inline-flex items-center align-middle mx-0.5"><span class="material-symbols-outlined text-sm text-accent">${name}</span></span>`;
+}
+
+function dismissInstallBanner() {
+  const banner = document.getElementById('install-banner');
+  if (banner) banner.classList.add('hidden');
+  localStorage.setItem('hp-install-dismissed', '1');
+}
+
+// ── Service Worker ───────────────────────────────────────────────────
+// Registered from /g/sw.js, not /static/sw.js: a worker only controls pages
+// under the directory it is served from, and /static/ holds no pages, so a
+// worker registered there installed happily and controlled nothing. The scope
+// is passed explicitly to state which pages it is for; it is the script's own
+// directory, the widest scope a browser grants without the server also sending
+// a Service-Worker-Allowed header.
+//
+// The one static URL that carries no ?v= build stamp: a browser never serves
+// the top-level worker script from its own HTTP cache, and changing this URL
+// would re-point a live registration's script for no gain. The assets the
+// worker caches are versioned, and its cache name carries the build too.
+if ('serviceWorker' in navigator) {
+  if (!('{{ base_path }}')) navigator.serviceWorker.register('/g/sw.js', { scope: '/g/' }).catch(() => {});
+}
+
+// One entry point, chosen once: a pending page runs the preview and nothing
+// else, so there is no path on which both a preview stream and a live one are
+// opened for the same load.
+if (PENDING) startPending(); else init();
+showInstallBanner();
+</script>
+{% endblock %}

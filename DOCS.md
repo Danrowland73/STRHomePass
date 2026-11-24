@@ -1,0 +1,312 @@
+# HomePass
+
+Shareable guest links for controlling Home Assistant devices.
+
+## What it does
+
+HomePass lets you create time-limited guest links that expose specific Home Assistant entities (lights, locks, switches, cameras, etc.) to visitors. No HA account required. Guests get a mobile-friendly PWA with real-time state updates.
+
+## Accessing the admin UI
+
+After installing, HomePass appears in the Home Assistant side panel. Click it to open the admin dashboard. No separate login needed, HA handles authentication automatically.
+
+For direct port access (e.g., `http://<your-ha-ip>:5880/admin/dashboard`), set **Admin Username** and **Admin Password** in the configuration below.
+
+## How guest links work
+
+1. In the admin dashboard, create an **access token** with selected entities and an expiration time.
+2. Share the generated link (`http://<your-ha-ip>:5880/g/{slug}`) with your guest.
+3. The guest opens the link on their phone. No app install or HA account needed.
+4. When the token expires, the guest sees the contact message and can no longer control devices.
+
+On the guest page each entity is a card with a round icon shape, in the style of Home Assistant's Mushroom cards. The shape's colour shows what the entity is doing: a light that is on is amber (or its own colour, for a colour bulb), a locked door green and an unlocked one red, an armed alarm green, a heating thermostat red and a cooling one blue. Anything switched off or idle goes grey, but its name stays fully readable. Only a device Home Assistant cannot reach fades the whole card. These state colours are fixed and separate from your **Primary Color**, which still styles the buttons and switches.
+
+Without a **Guest URL**, links copied from the HA side panel point at this machine's host name and the add-on's **Network** port, both read from the Supervisor. Remap the port (or rename the host) and new links follow it. If you disable the port, the dashboard warns you, because nothing outside Home Assistant can reach a guest link then.
+
+The slug in the link is the credential: anyone holding the link has the access. Share it the way you would share a password, and use **Revoke** or **Rotate Link** if it ends up somewhere it should not be.
+
+## Configuration
+
+Set these options in the add-on Configuration tab:
+
+| Option | Description |
+|--------|-------------|
+| **Admin Username** | Username for direct port access. Not needed when using the HA side panel. |
+| **Admin Password** | Password for direct port access (min 8 characters). Not needed when using the HA side panel. |
+| **App Name** | Display name shown to guests (default: "Home Access") |
+| **Contact Message** | Message shown when a guest link expires |
+| **Background Color** | Hex color for page background (e.g., `#F2F0E9`) |
+| **Primary Color** | Hex color for buttons and highlights (e.g., `#D9523C`) |
+| **Secondary Color** | Optional hex color for info buttons and secondary highlights. Blank picks one that goes with the primary. |
+| **Accent Color** | Optional hex color for small details and links. Blank picks one that goes with the primary. |
+| **Card Color**, **Text Color** | Optional hex colors for cards and text in light mode. Blank is worked out from the background. |
+| **Dark Background Color**, **Dark Card Color**, **Dark Text Color** | Optional hex colors for dark mode. Blank is worked out: the dark background from the light one, then the card and text from the dark background. |
+| **Guest URL** | External base URL for guest links (e.g., `https://guest.myhouse.com` or `https://guest.myhouse.com/visitors`). Leave empty for local network. For a path prefix, the reverse proxy must preserve the public `Host` and strip the prefix before forwarding to HomePass. |
+| **Time Zone** | IANA time zone weekly access windows are evaluated in (e.g., `Europe/Madrid`). Leave empty to use Home Assistant's own time zone, which is right for almost every install. |
+| **Home Network Ranges** | Comma-separated CIDRs that count as your home network (e.g., `192.168.1.0/24`). Controls marked **Only from the home network** accept commands only from these. Leave empty to turn that off. |
+| **Trusted Proxies** | Comma-separated CIDRs of reverse proxies allowed to report the visitor's address in `X-Forwarded-For`. Leave empty to trust Home Assistant's internal network (`172.30.32.0/23`), which covers ingress and proxy add-ons such as NGINX Proxy Manager or Cloudflared. Set it if your proxy runs elsewhere (e.g., `192.168.1.10/32`). The IP and country allowlists, the home-network check and rate limits all use this address; a proxy that isn't trusted makes every guest look like the proxy, and HomePass logs a warning naming it. |
+| **Enable API** | Serve the REST API under `/api/v1` for automations and Node-RED. Off by default. See [Public API](#public-api). |
+| **API Token** | Key for the REST API, sent as the `X-API-Key` header. Required when the API is enabled, min 32 characters. |
+
+These are the only add-on options. Everything else is set per link, in the dashboard.
+
+### Changing settings from the dashboard
+
+The **Settings** button (the sliders icon in the dashboard header) edits App Name, Contact Message, Guest URL, the colors and how many days of activity to keep. The colors section draws a light and a dark sample as you change them, shows what each blank color currently works out to, and warns when text would be hard to read. Tick **Auto** on an optional color to go back to the worked-out one. Changes apply straight away, with no restart.
+
+Two settings are only in the dashboard, not in the add-on options:
+
+- **Welcome text** is shown at the top of every guest page, up to 1000 characters when entered here. A `WELCOME_TEXT` environment variable is not length-checked, so keep it short. Leave it empty to show nothing. Open guest pages reload on their own when it changes. See [Guest info text](#guest-info-text).
+- **Phone region** is a two-letter country code, such as `CA`, used to recognise phone numbers written without a country code in the welcome and guest info text. Leave it blank to work it out automatically. The dialog refuses a code it does not know; a value from anywhere else that is not a valid two-letter country code, such as a `PHONE_REGION` environment variable, is ignored and the automatic lookup is used instead. Open guest pages reload on their own when it changes.
+
+A value saved there **overrides** the add-on option. The option stays underneath: the dialog shows which fields are overridden and what the option says, and **Revert** puts the option back in charge. While a field is overridden, changing that option in the Configuration tab has no effect. Saving a field back to the same value as its option clears the override.
+
+Admin username and password, and the Home Assistant connection, can only be changed in the add-on configuration. A mistake there could lock you out of the dashboard, and they are not something a browser session should be able to read or change.
+
+## Choosing entities
+
+The picker lists every entity in a domain HomePass supports: lights, switches, groups, climate, locks, alarm panels, media players, covers, fans, buttons, counters, timers, the `input_*` helpers, time and date helpers, and the read-only sensors, cameras and schedules. Scripts, scenes and automations are deliberately absent, because running one would take a guest outside the entities you picked.
+
+Three ways to narrow the list, and they combine:
+
+- **Domain chips** — Lights, Switches, Locks, Cameras, and so on.
+- **Search** — matches the entity name, including a display name you have overridden.
+- **Label** — filter by a Home Assistant label. Once a label or a search has narrowed the list, an **Add all** button appears and takes every match, not just the rows on screen.
+
+If the label row is missing, HomePass could not read the label registry from Home Assistant. Everything else still works.
+
+**Suggest** (new links only) offers two starting points: **Doors & locks** adds every lock, plus covers that Home Assistant classes as a door, gate or garage door and covers or buttons whose name says door, gate or garage. **Lights** adds every light, plus switches named as a light or lamp. Nothing is picked until you press one, pressing one only adds to the selection, and names are matched as whole words, so "Outdoor Blinds" is not a door. Check what was added before you create the link.
+
+**Templates** save the current selection under a name so a later link can start from it. Loading a template adds to whatever is already selected, so two templates can be stacked; entities Home Assistant no longer has are dropped quietly.
+
+### Per-entity options
+
+Click a selected entity to open its options:
+
+- **Display name** — what the guest sees instead of the Home Assistant name, up to 64 characters. Leave blank to use the HA name.
+- **Show brightness slider** (lights only) — off by default, so a light is on/off unless you turn this on.
+- **Show colour controls** (lights only) — also off by default. Gives the guest a colour wheel, a warm–cool temperature slider, or both, depending on what the bulb supports.
+- **Show history graph** (sensors only) — off by default. The guest can tap the sensor to open a chart of its last 6 hours, 24 hours or 7 days, and drag along the line to read a value. The history comes from Home Assistant's recorder, so a sensor the recorder excludes has none, and 7 days needs the recorder to keep at least that long (its default is 10). A sensor whose state is text, not a number, shows "No readings in this period." When two or more sensors on the link have this ticked and share a unit (three heat pumps in °C, say), the guest's chart lists the others underneath, and tapping one draws it on the same chart in its own colour, up to 6 at once. The guest's browser remembers which ones they compare, so the combined chart opens from any of them next time.
+- **Require the guest to be at the property** — see below.
+- **Only from the home network** — shown once **Home Network Ranges** is set. See below.
+
+These belong to the link, not the entity. The same light can be on/off for the cleaner and fully adjustable for a house guest.
+
+## When a link works
+
+When creating a link, choose one of three modes under **Access**:
+
+- **Single use** — the link stops working once it has been used (set **Uses** above 1 for a few uses). A use is one control the guest presses and Home Assistant accepts. Opening the link does not count, and neither does a chat app such as WhatsApp loading it to draw a preview card, so sending the link cannot use it up. A failed command does not count either. A link with only cameras and sensors on it is never used up. **Valid until** is optional. Tick **Show remaining uses to the guest** to keep a counter on the guest page showing how many uses are left. Without it, the guest only sees the count in a short message after each use.
+- **No expiry** — works until you revoke it.
+- **Set a period** — works from **Starts** to **Ends**. Leave the start blank to start now. The quick buttons (+1 day, +7 days, …) set the end relative to the start.
+
+Before its start, a guest who opens the link sees a countdown and a greyed-out preview instead of working controls — no Home Assistant state reaches the page, so the link can be sent days early.
+
+### Weekly times
+
+In **Set a period**, tick **Advanced: only on certain days and times** to limit the link to recurring weekly windows inside the period — "Tuesdays and Thursdays 09:00–13:00" for a cleaner, say. You can add several. An end earlier than the start runs past midnight, and the days you pick are the days the window *opens*: Friday 22:00–02:00 runs from Friday night into Saturday morning. End at 00:00 to run to midnight; 00:00–00:00 is the whole day.
+
+Times are in the house's time zone — Home Assistant's own, unless the **Time Zone** option overrides it. Outside every window the guest sees "Not active right now" with a countdown to the next one, and every part of the link — live state, commands, camera views — is refused. A page left open flips to the countdown when the window closes. If the time zone cannot be read, windowed links refuse access rather than guess.
+
+### Changing it later
+
+**Schedule** on a token's card edits all of the above after the link was created — start, end, weekly times and use limit — and moves any guest who has the link open onto the new schedule at once. Raising **Uses** on a used link grants the extra uses; **Reset the use count** starts it over. **Activate Now** opens a scheduled link straight away without moving its end. **Extend** / **Renew** pushes the end out, and on a used-up single-use link Renew also gives its uses back.
+
+## PIN protection
+
+You can put an optional 4–8 digit PIN on a link, either when creating it or later with the **Add PIN** button on its card. The guest is asked for the PIN before they see anything, and everything behind it — the page, live state, commands and camera views — stays closed until they enter it. One correct entry lasts 24 hours, or until the link expires if that is sooner.
+
+Two things to know:
+
+- **A forgotten PIN cannot be looked up.** PINs are stored hashed. The dashboard can tell you that a link has one; it can never tell you what it is. If a guest forgets it, set a new PIN and tell them the new one.
+- **Changing or removing a PIN signs out everyone who had entered the old one.** They are asked again on their next action. It also retires every link without PIN (below).
+
+Guessing is rate-limited, so a PIN entered wrongly several times in a row starts being refused for a minute at a time. Wait and try again.
+
+**Remember the PIN on the guest's device** is on by default. Turn it off — in the create form, or in the PIN dialog, where it saves as soon as you tick it — and the guest's PIN entry only lasts until they close their browser, so they are asked again every time they reopen the link. That suits a link that never expires. Turning it off also asks anyone it was already remembered for to enter the PIN again. Some browsers restore a closed session when they reopen, and keep the entry with it; even then it never lasts past the usual 24 hours.
+
+### Links without PIN
+
+A PIN-protected card has **Copy link without PIN** and **QR without PIN**. Each makes a new link that opens straight to the controls, skipping the keypad — for a QR code on the fridge, say, while the link you text out still asks for the PIN. The guest is signed in the same way a correct PIN would sign them in, and the code is removed from the address bar straight away.
+
+- **Each link is shown once.** Like PINs, links are stored hashed, so copy it or show its QR when you make it. Lost one? Make another.
+- **Manage them in the PIN dialog** (**PIN Protected** on the card). It lists every link with an optional label, when it was made and when it was last used. **Rotate** replaces a link with a new one under the same label; **Revoke** removes it. Both sign out every device that had opened that link — other links and the PIN itself are unaffected.
+- **Changing or removing the PIN, or rotating the token's link, retires all of them.**
+- A link without PIN skips the PIN and nothing else. The IP and country allowlists, expiry, revocation, a use limit, a scheduled start, weekly times and a device lock all still apply.
+- Up to 20 links per token.
+
+## Locking a link to one device
+
+Tick **Lock to one device** when creating a link, or use **Lock to One Device** on its card later. The guest sees a short "Use this device?" screen the first time; after they tap it, the link only works in that browser. Anyone else who opens it — a friend it was forwarded to, the guest's second phone — gets a page saying the link is in use on another device.
+
+- **Sharing the link in a chat app does not use it up.** The app's preview fetch only sees the "Use this device?" screen, which says nothing about your home. The link is claimed only when someone taps the button.
+- **It is tied to the browser, not the phone.** Some chat apps (Instagram, Facebook and others) open links in their own built-in browser, which counts as a different device. So does switching from Safari to Chrome, clearing cookies, and possibly adding the page to an iPhone home screen. The screens tell the guest to open the link in their normal browser first.
+- **Unbind Device** on the card lets the next device claim the link, which is the fix when a guest is locked out of their own link. **Rotate Link** also releases the claim, and gives the link to a new person.
+- Claims and refusals show up in **Recent activity**, so you can see when a link has reached a second device.
+
+## Requiring the guest to be at the property
+
+Any controllable entity can be marked **Require the guest to be at the property**. When the guest presses that one control, their browser is asked where it is, and the command only goes through if the position falls inside Home Assistant's `zone.home`. It is per entity — you can gate the gate release and leave the living-room lamp alone.
+
+- **The guest link has to be served over HTTPS.** Set **Guest URL** to an `https://` address, behind a reverse proxy or Nabu Casa. Browsers refuse to report a location over plain HTTP, and the control refuses with them.
+- **It is a deterrent, not proof.** The position comes from the guest's own browser, so someone determined can claim to be anywhere. It is the same kind of protection the IP allowlist gives: good against a guest casually using the link from their own house, not against someone trying to get around it.
+- **It fails closed.** No location, a location more than two minutes old, or a `zone.home` that cannot be read all refuse the command.
+
+`zone.home` is the Home zone under **Settings → Areas, labels & zones**. Its radius is what HomePass compares against, so widen it there if guests are being refused at the door.
+
+## Only from the home network
+
+Set **Home Network Ranges** in the add-on options, and any controllable entity can be marked **Only from the home network**. The guest still sees the control and its state wherever they are, but pressing it only works when they are connected to one of those ranges — your Wi-Fi, typically. Locks, covers and buttons are ticked for you when you add them to a link; untick one for a guest you trust to use it from anywhere.
+
+- **It relies on the client address** described under **Trusted Proxies**, the same as the IP allowlist.
+- **If guests use a public link at home**, through a tunnel or Nabu Casa, their requests may arrive from your public IP rather than a home address. Add your public IP to the ranges in that case.
+- **Clearing the option turns the check off** for every link, including entities already marked.
+
+## Cameras
+
+Add a camera entity to a link and the guest gets a live view on their page. It is read-only: no camera service can be called through a guest link. The view stops when the guest closes or backgrounds the tab, and one link is limited to 8 live views at a time across all of the guest's devices.
+
+## Managing a live link
+
+Each token's card offers:
+
+- **Extend** — push the expiry out. It reads **Renew** on a link that has already expired, been revoked or been used up.
+- **Schedule** — change the start, end, weekly times or use limit. See [When a link works](#when-a-link-works).
+- **Guest info** — change the link's own text for the guest, or move it to the footer. See [Guest info text](#guest-info-text).
+- **Edit Entities** — change what is on the link, including the per-entity options and the section headings. See [Section headings](#section-headings).
+- **Add PIN / PIN Protected** — set, change or remove the PIN, choose whether it is remembered, and manage links without PIN.
+- **Copy link without PIN / QR without PIN** — on PIN-protected links only; see above.
+- **Rotate Link** — generate a new link and kill the old one immediately. Entities, options, expiry, PIN and history are kept, so use this instead of rebuilding a token when a link has reached the wrong person. A guest who had entered the PIN is asked for it again, links without PIN are retired, and a device lock is released.
+- **Lock to One Device / Unbind Device** — lock the link to the first browser that claims it, or release the claim so the next device can take it.
+- **Duplicate** — start a new link pre-filled with this one's entities and their settings (display names, location and home-network requirements), IP allowlist, country allowlist, device-lock and remember-PIN settings, guest info text, section headings, and timing: the same mode, use limit, weekly times and length, starting now. The PIN itself is not copied.
+- **Revoke** — stop the link working, keeping its history.
+- **Delete** — remove the token and its history.
+
+**IP Allowlist** is set when the link is created and is a comma-separated list of CIDRs (`192.168.1.0/24`). It checks the address described under **Trusted Proxies** in [Configuration](#configuration). To change it later, duplicate the link and revoke the old one.
+
+**Countries** is also set when the link is created: a comma-separated list of country codes (`GB, IE`). The link then only opens for visitors whose internet address is registered in one of those countries, plus anyone on your **Home Network Ranges**. It is a coarse filter — a VPN or a roaming phone can appear to be somewhere else — and it needs the same reverse proxy the IP allowlist does. The country lookup happens on your own machine, using a database built into the add-on (IP Geolocation by [DB-IP](https://db-ip.com), CC BY 4.0); nothing about your guests is sent anywhere.
+
+**Recent activity** in the dashboard shows link opens and commands. Access logs are kept for 90 days, or as set under **Settings**.
+
+## Guest info text
+
+There are two texts a guest can be shown, and both are optional:
+
+- **Welcome text**, set once under **Settings**, appears on every guest page.
+- **Guest info text** belongs to one link: the door code, where to park, who to call. Set it in **Guest info text** when creating the link, or later with **Guest info** on the link's card.
+
+Both appear in one card at the top of the guest page, welcome text first, with a blank line between them. Tick **Show in the footer instead** to move the link's text out of that card into a box at the bottom of the page, below the controls, which is always visible. The welcome text stays at the top; with no welcome text, there is no top card at all.
+
+The guest can tap **Collapse** to shrink the top card to a one-line strip, and **More** to open it again. The strip shows only the first line of the card's text, with its formatting and links, cut off with an ellipsis if it is too long; if the text has tags and nothing to read, it shows the card's name instead. Nothing collapses on its own and there is no timer. The choice is remembered per link, in that browser only, and the card opens again by itself when its text changes: when the welcome text or the link's text is edited, and when a link that had not started yet goes live and its own text joins the card. The footer box has no such buttons.
+
+When a link's text or its footer setting is changed, from the dashboard or through the API, guest pages already open on that link reload on their own and show the new text; a collapsed card opens again, because its text changed. Changing the welcome text or the **Phone region** under **Settings** reloads every open guest page in the same way, on every link. A change made through the `WELCOME_TEXT` or `PHONE_REGION` environment variable takes effect after a restart.
+
+The text is stored exactly as typed and shown with its line breaks kept. A few formatting tags are understood, in upper or lower case:
+
+| Tags | Effect |
+|------|--------|
+| `<b>`, `<strong>` | bold |
+| `<i>`, `<em>` | italic |
+| `<u>`, `<s>` | underlined, struck through |
+| `<small>`, `<mark>` | smaller, highlighted |
+| `<h1>` to `<h6>` | headings, sized for the card |
+| `<ul>`, `<ol>`, `<li>` | bulleted and numbered lists |
+| `<br>` | a line break |
+| `<font color="...">` | coloured text |
+
+These tags take no attributes; anything written inside them, such as `class` or `style`, is dropped. The one exception is `color` on `<font>`, which must be one of the 148 standard CSS colour names (`red`, `darkgreen`, `rebeccapurple`), `#rgb` or `#rrggbb`, or `rgb(r, g, b)` with three whole numbers from 0 to 255. Anything else, such as `rgba(...)`, `hsl(...)` or a name that is not on the list, is dropped and the text keeps its normal colour. A fixed colour can be hard to read in dark mode or against your brand colours, so check the page in both themes.
+
+Every other tag is not interpreted and is shown as typed, so `<script>`, `<img>`, `<div>` or a `<a href="...">` link appear on the page as text, and so does a closing tag that does not close anything. Entities are not decoded either: `&lt;b&gt;` shows up as `&lt;b&gt;`. A tag left open is closed at the end of the text. Links cannot be written by hand; instead, three things become tappable links by themselves, anywhere outside a tag:
+
+- web addresses starting with `https://`, opened in a new tab (`http://` addresses stay plain text),
+- email addresses,
+- phone numbers.
+
+A phone number starting with `+` and the country code always works. One written the national way, such as `613-996-2000`, needs to know the country. HomePass uses the **Phone region** setting; if that is blank, Home Assistant's country; and if that is not set either, the country of Home Assistant's time zone. With none of those, only `+` numbers become links. Two phone numbers separated only by a space are read as one and only one of them links, so separate them with a comma, a new line or the word "or".
+
+Each text is limited to 1000 characters when entered in the dashboard or through the API, tags included. A `WELCOME_TEXT` environment variable is not length-checked, so keep it short. On a link that has not started yet, or is between its weekly times, only the welcome text is shown: the link's own text, and the footer box, appear once the link works. **Duplicate** copies the link's text and footer setting, so check it before sending the copy to someone else.
+
+Anyone who can open the link can read its text, and so can anyone they forward it to. Do not put anything in it that the guest should not see, and remember the welcome text is shown on every link. The text is kept out of the page title and the other tags a chat app builds its link preview from, and it is never on the PIN or device screens or on an expired or revoked link's page.
+
+In the [Public API](#public-api), `info_text` and `info_text_in_footer` can be set when creating a token and changed with `PATCH /api/v1/tokens/{id}`, are copied by duplicate, and are included in every token response. An empty `info_text` removes the text, and a `PATCH` that changes either field reloads the link's open guest pages. A revoked token's text cannot be changed.
+
+## Section headings
+
+The guest page groups a link's entities into sections under headings such as "Lights" or "Switches". Switches and `input_boolean` share one section, as do `button` and `input_button`, and `datetime` and `input_datetime`.
+
+The create form and **Edit Entities** have one row per section on the link:
+
+- **Type a name** of up to 64 characters to replace the heading. Blank keeps the default heading, and a typed name is shown as typed in every language.
+- **Don't allow collapsing** keeps the section always open, with its heading shown as plain text.
+
+Guests can tap a heading to collapse or expand its section. This lasts only while the page is open: every visit and reload starts fully open, and a section with **Don't allow collapsing** ticked cannot be collapsed.
+
+Changing a link's headings reloads its open guest pages, and **Duplicate** copies them.
+
+In the [Public API](#public-api), `group_headings` is accepted on create and `PATCH /api/v1/tokens/{id}` and returned in every token response; an empty `name` keeps the usual heading, and `{}` resets all:
+
+```json
+{"light": {"name": "Lamps", "locked": false}, "switch": {"name": "", "locked": true}}
+```
+
+## Link branding
+
+Each link can have its own logo, title and eyebrow text, all optional, set in the create form or with the **Branding** button on the link's card. In the guest page's pinned header the logo replaces the person icon, the title replaces the link's label and the eyebrow replaces the app name. Anything left blank keeps the usual part.
+
+- **Logo:** PNG or WebP, not animated, 32 to 1024 px per side, up to 512 KB. A slider sets its height (24 to 64 px).
+- **Title and eyebrow:** up to 80 and 40 characters, shown as typed, each with a size slider.
+- **Use global colors:** on by default. Turn it off to give the link its own colors. A color left on Auto follows your global setting. Secondary and Accent are worked out from the link's own Primary instead when it differs from the global one, and Card, Text and the dark colors from its own Background when that differs.
+
+The PIN, expired and revoked pages show them centered. The device-lock and blocked-address pages stay plain. **Duplicate** copies the branding. In the [Public API](#public-api), tokens carry a `branding` field, and `POST` or `DELETE` on `/api/v1/tokens/{id}/logo` uploads (multipart, in a `file` field) or removes the logo.
+
+## Public API
+
+An optional REST API lets Home Assistant automations, Node-RED or any HTTP client manage tokens without the dashboard. It is off until you turn on **Enable API** and set an **API Token** of at least 32 characters (`openssl rand -hex 32` makes a good one), then restart the add-on.
+
+Send the token in the `X-API-Key` header on every request. A dashboard login does not unlock the API; only the key does.
+
+| Method | Path | Does |
+|---|---|---|
+| `GET` | `/api/v1/tokens` | List tokens |
+| `POST` | `/api/v1/tokens` | Create a token |
+| `GET` | `/api/v1/tokens/{id}` | One token, with entities and per-entity options |
+| `PATCH` | `/api/v1/tokens/{id}` | Change label, entities, expiry, PIN, remember-PIN, the device lock, the remaining-uses counter, the guest info text, the section headings or the branding text and colors |
+| `PUT` | `/api/v1/tokens/{id}/schedule` | Replace start, end, weekly times and use limit |
+| `POST` | `/api/v1/tokens/{id}/unbind` | Release a device lock's claim |
+| `GET` / `POST` | `/api/v1/tokens/{id}/access-codes` | List or make links without PIN (a new code is shown once) |
+| `POST` / `DELETE` | `/api/v1/tokens/{id}/access-codes/{code_id}[/rotate]` | Rotate or revoke one link without PIN |
+| `DELETE` | `/api/v1/tokens/{id}` | Delete a token and its history |
+| `POST` / `DELETE` | `/api/v1/tokens/{id}/logo` | Upload (multipart `file`, PNG or WebP) or remove the link's logo |
+| `POST` | `/api/v1/tokens/{id}/revoke` | Revoke |
+| `POST` | `/api/v1/tokens/{id}/renew` | New expiry, and un-revoke |
+| `POST` | `/api/v1/tokens/{id}/activate` | Start a scheduled token now |
+| `POST` | `/api/v1/tokens/{id}/rotate-slug` | New link, old one stops working |
+| `POST` | `/api/v1/tokens/{id}/duplicate` | Copy entities, options, allowlists, weekly times, use limit, remember-PIN and device-lock settings, guest info text, section headings and branding (logo included) into a new token |
+
+Anything that sets an expiry takes either `expires_at` (Unix seconds — handy for a check-out time) or `expires_in_seconds`, not both. Creating a token runs the same checks as the dashboard and accepts every field the dashboard sets — weekly times, use limit, remember-PIN, device lock and country allowlist included. Responses never include a PIN, only `has_pin`.
+
+With the API enabled, the dashboard header gets an **API Docs** link to an interactive Swagger page at `/api/docs`. The page and the schema at `/api/openapi.json` need a dashboard login (the schema also accepts the API key). The API is limited to 120 requests a minute per client IP.
+
+## Languages
+
+Guest links show in the guest's own browser language when it is one of the 24 official EU languages, and in English otherwise. The admin dashboard is in English or Spanish: it follows your browser, and **Settings → Language** pins one for the browser you are using. The app name, contact message, welcome text, guest info text, section heading names, token labels and display names you set are not translated: they are shown as you typed them in every language, with the welcome and guest info text's formatting tags applied.
+
+## Notifications
+
+HomePass fires a `homepass_activity` event on Home Assistant's event bus when a guest link is opened and when a guest command succeeds, and writes a matching Logbook entry. Trigger an automation on that event to get a phone notification when the cleaner unlocks the door. The event carries the link's label, the entity and the service — never the slug or the guest's IP address. The README has a worked automation.
+
+## Troubleshooting
+
+**A guest link looks broken in the HA sidebar.** Guest links are meant to be opened outside Home Assistant, on the direct port or your **Guest URL**. The sidebar panel is the admin dashboard.
+
+**The guest sees "This link is not active yet".** The link has a start time that has not arrived. Use **Activate Now** if that was a mistake.
+
+**The guest sees "Not active right now".** The link has weekly times and it is outside all of them. Check the times against the zone shown under **Advanced** — it is the house's time zone, not the guest's.
+
+**The guest sees "Link Already Used".** A single-use link was used. **Renew** it, or raise its uses under **Schedule**.
+
+**A location-gated control says the link needs to be secure.** The guest is on `http://`. Set **Guest URL** to an HTTPS address.
+
+**The guest gets "too many requests".** The per-link rate limits kicked in. They clear on their own within a minute.
+
+**Nothing works and the add-on log says Home Assistant is unreachable.** HomePass proxies everything to HA and will not serve if it cannot reach it.

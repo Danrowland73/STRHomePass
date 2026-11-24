@@ -1,0 +1,58 @@
+configuration:
+  admin_username:
+    name: Admin Username
+    description: "Only needed for direct port access. Not required when using HA sidebar."
+  admin_password:
+    name: Admin Password
+    description: "Only needed for direct port access. Not required when using HA sidebar. Min 8 characters."
+  app_name:
+    name: App Name
+    description: Display name shown to guests
+  contact_message:
+    name: Contact Message
+    description: Message shown when a guest link expires
+  brand_bg:
+    name: Background Color
+    description: "Hex color for page background (e.g., #F2F0E9)"
+  brand_primary:
+    name: Primary Color
+    description: "Hex color for accents and buttons (e.g., #D9523C)"
+  brand_secondary:
+    name: Secondary Color
+    description: "Optional hex color for secondary highlights such as info buttons. Blank picks one that goes with the primary."
+  brand_accent:
+    name: Accent Color
+    description: "Optional hex color for small accents and links. Blank picks one that goes with the primary."
+  brand_surface:
+    name: Card Color
+    description: "Optional hex color for cards in light mode. Blank is worked out from the background."
+  brand_text:
+    name: Text Color
+    description: "Optional hex color for text in light mode. Blank is worked out from the background."
+  brand_dark_bg:
+    name: Dark Background Color
+    description: "Optional hex color for the page background in dark mode. Blank is worked out from the background."
+  brand_dark_surface:
+    name: Dark Card Color
+    description: "Optional hex color for cards in dark mode. Blank is worked out from the dark background."
+  brand_dark_text:
+    name: Dark Text Color
+    description: "Optional hex color for text in dark mode. Blank is worked out from the dark background."
+  guest_url:
+    name: Guest URL
+    description: "External base URL for guest links (e.g., https://guest.myhouse.com). Leave empty for local network."
+  timezone:
+    name: Time Zone
+    description: "IANA time zone for weekly access windows (e.g., Europe/Madrid). Leave empty to use Home Assistant's configured time zone."
+  local_network_cidrs:
+    name: Home Network Ranges
+    description: "Comma-separated CIDRs that count as your home network (e.g., 192.168.1.0/24). Controls marked 'Only from the home network' accept commands only from these. Leave empty to turn this off."
+  trusted_proxies:
+    name: Trusted Proxies
+    description: "Comma-separated CIDRs of reverse proxies allowed to report the visitor's address (X-Forwarded-For). Leave empty to trust Home Assistant's internal network (ingress and proxy add-ons such as NGINX Proxy Manager or Cloudflared). Set it if your proxy runs elsewhere, e.g. 192.168.1.10/32."
+  api_enabled:
+    name: Enable API
+    description: "Serve the REST API under /api/v1 for Home Assistant automations, Node-RED and other integrations. Off by default."
+  api_token:
+    name: API Token
+    description: "Key sent in the X-API-Key header. Required when the API is enabled, min 32 characters. Generate one with 'openssl rand -hex 32'."

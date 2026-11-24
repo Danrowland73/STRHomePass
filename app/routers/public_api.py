@@ -212,6 +212,13 @@ async def update_token(token_id: str, body: ApiTokenUpdateRequest) -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot edit the branding of a revoked token",
         )
+    if (body.group_by is not None or body.guest_can_regroup is not None
+            or body.page_style is not None) and row["revoked"]:
+        # Saved with the entities in the dashboard, like the headings below.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot edit the guest page layout of a revoked token",
+        )
     if body.group_headings is not None and row["revoked"]:
         # The dashboard saves the headings with the entities, so the same
         # refusal as its entity editor.
@@ -252,8 +259,12 @@ async def update_token(token_id: str, body: ApiTokenUpdateRequest) -> dict:
     if body.show_remaining_uses is not None:
         await db.set_show_remaining_uses(token_id, body.show_remaining_uses)
     headings_changed = await admin._set_group_headings_if_changed(row, body.group_headings)
+    layout_changed = await admin._set_layout_if_changed(
+        row, body.group_by, body.guest_can_regroup, body.page_style
+    )
     branding_changed = await admin._set_branding_if_changed(row, body.branding)
-    if body.show_remaining_uses is not None or info_change or headings_changed or branding_changed:
+    if (body.show_remaining_uses is not None or info_change or headings_changed
+            or layout_changed or branding_changed):
         # Open guest pages draw the counter, the info text and the section
         # headings at load; reload them once, after every write, so the change
         # shows now, as it does after the dashboard's Schedule or Guest info.
@@ -442,6 +453,9 @@ async def duplicate_token(token_id: str, body: ApiTokenDuplicateRequest | None =
         info_text_in_footer=bool(row["info_text_in_footer"]),
         # Presentation of the same entities, so it travels with them.
         group_headings=db.group_headings_from_row(row["group_headings"]),
+        group_by=row["group_by"],
+        guest_can_regroup=bool(row["guest_can_regroup"]),
+        page_style=row["page_style"],
         # Presentation of the link, so the copy keeps it, logo included.
         branding=BrandingInput(**{
             k: v for k, v in branding.from_row(row["branding"]).items() if k != "logo"

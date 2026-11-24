@@ -1103,6 +1103,9 @@ async def guest_pwa(background_tasks: BackgroundTasks, request: Request, slug: s
             if row["show_remaining_uses"] and row["max_uses"] is not None and not pending
             else None
         ),
+        # The link's look. Resolved against the device in the page's <head>,
+        # before it paints; see the fouc_extra block in guest_pwa.html.
+        "page_style": row["page_style"],
         "preview_entity_ids": await db.get_token_entities(row["id"]) if pending else [],
         "preview_entity_meta": await db.get_token_entity_meta(row["id"]) if pending else {},
         # The section headings, so the preview groups the way the live page will.
@@ -1407,11 +1410,28 @@ async def guest_state(request: Request, slug: str = Path(max_length=64)):
     # The admin's renamed and locked section headings, by group key. Sent with
     # every /state rather than rendered into the page, so a refetch after a
     # reconnect draws the sections the same way the first load did.
+    # Areas for the area layout, for this link's entities only: a guest learns
+    # the names of the rooms their own devices are in, never the rest of the
+    # house. area_names is None when HA's area registry cannot be read, which
+    # the page takes as "draw the type layout and offer no switch".
+    area_map = await ha_client.get_area_map()
+    entity_areas: dict[str, str] = {}
+    area_names: dict[str, str] | None = None
+    if area_map is not None:
+        for eid in entity_ids:
+            area_id = area_map["entity_areas"].get(eid)
+            if area_id:
+                entity_areas[eid] = area_id
+        area_names = {aid: area_map["areas"][aid] for aid in set(entity_areas.values())}
     return {
         "entities": entity_ids,
         "states": states,
         "entity_meta": meta,
         "group_headings": db.group_headings_from_row(row["group_headings"]),
+        "group_by": row["group_by"],
+        "guest_can_regroup": bool(row["guest_can_regroup"]),
+        "entity_areas": entity_areas,
+        "area_names": area_names,
     }
 
 

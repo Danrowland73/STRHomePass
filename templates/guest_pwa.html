@@ -11,6 +11,8 @@
 <meta name="theme-color" content="{{ brand_bg_dark }}" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="{{ base_path }}/g/{{ slug }}/manifest.json" crossorigin="use-credentials">
 <link rel="apple-touch-icon" href="{{ base_path }}/static/icons/icon-192.png?v={{ build_version }}">
+<link rel="stylesheet" href="{{ base_path }}/static/skins.css?v={{ build_version }}">
+<script src="{{ base_path }}/static/skin.js?v={{ build_version }}"></script>
 {% endblock %}
 
 {% block fouc_extra %}
@@ -18,6 +20,9 @@
   var isPWA = ('standalone' in navigator && navigator.standalone) ||
               window.matchMedia('(display-mode: standalone)').matches;
   if (isPWA) document.documentElement.classList.add('pwa');
+  // The link's look for this device: sets data-skin="ios" or "android" on
+  // <html>, which static/skins.css keys off. Before paint, so no flash.
+  applyPageSkin({{ page_style | default('standard') | tojson }});
 {% endblock %}
 
 {% block head_styles %}
@@ -547,6 +552,18 @@ let entityMeta = {};
 let entityOrder = [];
 // The admin's renamed and locked section headings: { group_key: {name, locked} }.
 let groupHeadings = {};
+// The link's layout: 'type' (sections by kind) or 'area' (one per HA area), and
+// whether the guest may switch it. entityAreas maps an entity to its area id;
+// areaNames is null when HA's areas could not be read, which means type layout
+// and no switch.
+let groupBy = 'type';
+let guestCanRegroup = false;
+let entityAreas = {};
+let areaNames = null;
+// The guest's own pick of layout, kept per link in this browser. Read lazily
+// so a page that offers no switch never touches storage.
+const GROUP_BY_KEY = `hp-group-by:${SLUG}`;
+let guestGroupBy;
 // Group keys of the sections the guest has shut. Held for this page view only,
 // never stored: every load opens with every section showing, so a guest is
 // never left wondering where a control went.
@@ -599,6 +616,7 @@ async function init() {
     entityOrder = data.entities;
     entityMeta = data.entity_meta || {};
     groupHeadings = data.group_headings || {};
+    readLayout(data);
     renderAll();
     connectSSE();
   } catch (e) {
@@ -787,6 +805,7 @@ async function refetchState() {
     states = data.states;
     entityOrder = data.entities;
     groupHeadings = data.group_headings || {};
+    readLayout(data);
     renderAll();
   } catch {}
 }
@@ -842,38 +861,18 @@ function renderAll() {
     return;
   }
 
-  // By group key, not domain, so input_boolean shares the one "Switches"
-  // section with switch rather than drawing a second heading of the same name.
-  const groups = {};
-  for (const eid of entityOrder) {
-    const key = groupKey(eid.split('.')[0]);
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(eid);
-  }
+  const sections = effectiveGroupBy() === 'area' ? areaSections() : typeSections();
 
-  const sortedKeys = Object.keys(groups).sort((a, b) => {
-    const ia = DOMAIN_ORDER.indexOf(a);
-    const ib = DOMAIN_ORDER.indexOf(b);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-  });
-
-  let html = '';
-  for (const key of sortedKeys) {
-    const heading = groupHeadings[key] || {};
-    // Within a section, order by what the guest actually sees: the per-token
-    // display name if set, then the HA friendly name, then the entity id.
-    const ordered = groups[key].slice().sort((a, b) =>
-      displayName(a, states[a]).localeCompare(displayName(b, states[b]), undefined, { sensitivity: 'base' })
-    );
-    const cards = ordered.map(eid => buildCard(eid, states[eid])).join('');
-    const label = heading.name || domainLabel(key);
+  let html = layoutSwitchHtml();
+  for (const { key, label, entities, locked } of sections) {
+    const cards = entities.map(eid => buildCard(eid, states[eid])).join('');
     // Quieter than the cards under it: a heading that competes with the
     // entities makes the list harder to scan, not easier. A real heading
     // element, so a screen reader can jump from one section to the next.
     const h2 = '<h2 class="pt-5 pb-2 px-1 text-[13px] font-semibold text-muted">';
     // A locked section's heading is plain text with nothing to tap, and the
     // collapsed state never applies to it, so its entities always show.
-    if (heading.locked) {
+    if (locked) {
       html += `${h2}${esc(label)}</h2><div data-group="${esc(key)}">${cards}</div>`;
       continue;
     }
@@ -888,6 +887,120 @@ function renderAll() {
     html += `<div id="group-${esc(key)}" data-group="${esc(key)}"${open ? '' : ' hidden'}>${cards}</div>`;
   }
   container.innerHTML = html;
+}
+
+function byDisplayName(a, b) {
+  return displayName(a, states[a]).localeCompare(displayName(b, states[b]), undefined, { sensitivity: 'base' });
+}
+
+function domainRank(domain) {
+  const i = DOMAIN_ORDER.indexOf(groupKey(domain));
+  return i === -1 ? 99 : i;
+}
+
+// Sections by kind, in DOMAIN_ORDER. By group key, not domain, so
+// input_boolean shares the one "Switches" section with switch rather than
+// drawing a second heading of the same name. The admin's renamed and locked
+// headings apply here.
+function typeSections() {
+  const groups = {};
+  for (const eid of entityOrder) {
+    const key = groupKey(eid.split('.')[0]);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(eid);
+  }
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    const ia = DOMAIN_ORDER.indexOf(a);
+    const ib = DOMAIN_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+  return sortedKeys.map(key => {
+    const heading = groupHeadings[key] || {};
+    // Within a section, order by what the guest actually sees: the per-token
+    // display name if set, then the HA friendly name, then the entity id.
+    return {
+      key, label: heading.name || domainLabel(key),
+      entities: groups[key].slice().sort(byDisplayName), locked: Boolean(heading.locked),
+    };
+  });
+}
+
+// One section per HA area, alphabetical, with entities that have no area in a
+// last "No area" section. Inside an area, cards keep the type layout's order
+// (lights, then switches...) and then go by name, so a room reads the same way
+// the whole house does. Keys are prefixed so a shut area never shuts the type
+// section of the same name.
+function areaSections() {
+  const groups = {};
+  for (const eid of entityOrder) {
+    const areaId = entityAreas[eid];
+    const key = areaId && areaNames && areaNames[areaId] ? `area-${areaId}` : 'area-none';
+    if (!groups[key]) groups[key] = { label: key === 'area-none' ? tr('devices.no_area') : areaNames[areaId], entities: [] };
+    groups[key].entities.push(eid);
+  }
+  return Object.keys(groups)
+    .sort((a, b) => (a === 'area-none') - (b === 'area-none')
+      || groups[a].label.localeCompare(groups[b].label, undefined, { sensitivity: 'base' }))
+    .map(key => ({
+      key, label: groups[key].label, locked: false,
+      entities: groups[key].entities.slice().sort((a, b) =>
+        domainRank(a.split('.')[0]) - domainRank(b.split('.')[0]) || byDisplayName(a, b)),
+    }));
+}
+
+function readLayout(data) {
+  groupBy = data.group_by === 'area' ? 'area' : 'type';
+  guestCanRegroup = Boolean(data.guest_can_regroup);
+  entityAreas = data.entity_areas || {};
+  areaNames = data.area_names || null;
+}
+
+// Areas are only offered when HA gave us some: with none, an area layout would
+// be one "No area" heading over everything.
+function areasAvailable() {
+  return Boolean(areaNames) && Object.keys(areaNames).length > 0;
+}
+
+function storedGroupBy() {
+  if (guestGroupBy === undefined) {
+    guestGroupBy = null;
+    try { guestGroupBy = window.localStorage.getItem(GROUP_BY_KEY); } catch { /* not remembered */ }
+  }
+  return guestGroupBy === 'type' || guestGroupBy === 'area' ? guestGroupBy : null;
+}
+
+function effectiveGroupBy() {
+  if (!areasAvailable()) return 'type';
+  if (guestCanRegroup) return storedGroupBy() || groupBy;
+  return groupBy;
+}
+
+function layoutSwitchHtml() {
+  if (!guestCanRegroup || !areasAvailable()) return '';
+  const current = effectiveGroupBy();
+  const option = (value, icon, label) => {
+    const on = current === value;
+    return `<button type="button" data-action="group-by" data-group-by="${value}" aria-pressed="${on}"`
+      + ` class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-display font-semibold`
+      + `${on ? ' bg-surface-light dark:bg-surface-dark shadow-sm' : ' text-muted'}">`
+      + `<span aria-hidden="true" class="material-symbols-outlined text-sm">${icon}</span>${esc(label)}</button>`;
+  };
+  // The visible label also names the group for a screen reader, so both
+  // hear and see the same words.
+  return `<div class="flex justify-end items-center gap-2 pt-2">`
+    + `<span id="layout-switch-label" class="text-xs font-semibold text-muted">${esc(tr('devices.display_by'))}</span>`
+    + `<div class="layout-switch inline-flex gap-1 p-1 rounded-xl bg-soot/5 dark:bg-white/5" role="group" aria-labelledby="layout-switch-label">`
+    + option('type', 'category', tr('devices.by_type'))
+    + option('area', 'meeting_room', tr('devices.by_area'))
+    + `</div></div>`;
+}
+
+// The guest's pick, remembered for this link in this browser only.
+function setGroupBy(value) {
+  if (value !== 'type' && value !== 'area') return;
+  guestGroupBy = value;
+  try { window.localStorage.setItem(GROUP_BY_KEY, value); } catch { /* not remembered */ }
+  renderAll();
 }
 
 // Opens or shuts one section in place, without a re-render, so a slider
@@ -966,12 +1079,18 @@ function buildCard(eid, state) {
 
   // Borderless, after Mushroom: the shadow alone lifts the card off the page,
   // which reads softer than a ruled box and lets the tinted shape lead.
-  return `<div ${cardTap}class="bg-surface-light dark:bg-surface-dark rounded-2xl p-3 mb-2 shadow-card ${hasToggle || hasHistory ? 'cursor-pointer select-none' : ''} ${opacityClass}" id="card-${cssId(eid)}">
-    <div class="flex items-center gap-3">
+  //
+  // The ha-card* classes and data-* attributes style nothing in the standard
+  // look. They are hooks for the iOS and Android looks in static/skins.css:
+  // a card with no controls of its own is a compact tile there (data-tile),
+  // and data-active lights it up while the entity is on, open or playing.
+  const tile = controls.trim() === '' ? ' data-tile' : '';
+  return `<div ${cardTap}class="ha-card bg-surface-light dark:bg-surface-dark rounded-2xl p-3 mb-2 shadow-card ${hasToggle || hasHistory ? 'cursor-pointer select-none' : ''} ${opacityClass}" id="card-${cssId(eid)}" data-domain="${domain}" data-active="${isActiveState(domain, stateStr)}"${tile}>
+    <div class="ha-card-row flex items-center gap-3">
       ${entityShapeHtml(eid, domain, state, icon)}
-      <div class="flex-1 min-w-0">
-        <div class="text-sm font-semibold leading-tight truncate${locationBadge ? ' flex items-center gap-1' : ''}">${esc(name)}${locationBadge}</div>
-        <div class="text-xs text-muted leading-tight mt-0.5" id="state-${cssId(eid)}">${formatState(domain, stateStr, state)}</div>
+      <div class="ha-card-text flex-1 min-w-0">
+        <div class="ha-card-name text-sm font-semibold leading-tight truncate${locationBadge ? ' flex items-center gap-1' : ''}">${esc(name)}${locationBadge}</div>
+        <div class="ha-card-state text-xs text-muted leading-tight mt-0.5" id="state-${cssId(eid)}">${formatState(domain, stateStr, state)}</div>
       </div>
       ${toggleHtml}${historyHtml}
     </div>
@@ -1121,6 +1240,19 @@ function formatState(domain, stateStr, state) {
 // Whether the whole card dims: only for an entity HA cannot reach or has no
 // value for. Being switched off is not that — the shape's colour already says
 // "idle", and the name has to stay readable either way.
+// Whether an entity is doing something: on, open, unlocked, playing, heating.
+// Only the iOS and Android looks read it (data-active on the card), to light
+// the tile up the way a phone's own home app does.
+const ACTIVE_STATES = new Set([
+  'on', 'open', 'opening', 'closing', 'unlocked', 'unlocking', 'playing', 'buffering',
+  'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only', 'active',
+  'armed_home', 'armed_away', 'armed_night', 'armed_vacation', 'armed_custom_bypass', 'triggered',
+]);
+function isActiveState(domain, stateStr) {
+  if (domain === 'sensor' || domain === 'camera') return false;
+  return ACTIVE_STATES.has(stateStr);
+}
+
 function isDimmedState(domain, stateStr) {
   // A button that has never been pressed reports 'unknown'. That is its resting
   // state, not an unavailable entity.
@@ -1682,6 +1814,7 @@ function updateCard(eid, state) {
   if (stateEl) stateEl.textContent = formatState(domain, state.state, state);
 
   card.classList.toggle('opacity-60', isDimmedState(domain, state.state));
+  card.dataset.active = String(isActiveState(domain, state.state));
   applyEntityColor(eid, domain, state);
 
   // Domain-specific updates may replaceChild, so pulse is handled there
@@ -2749,6 +2882,9 @@ document.addEventListener('click', e => {
       break;
     case 'group-toggle':
       toggleGroup(el);
+      break;
+    case 'group-by':
+      setGroupBy(el.dataset.groupBy);
       break;
     // Defined by the script right after the info card, which only exists,
     // with these buttons, when there is text to show.

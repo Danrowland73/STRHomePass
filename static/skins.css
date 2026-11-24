@@ -1,0 +1,276 @@
+/* Device looks for the guest page: an iOS look and an Android look.
+ *
+ * Set by static/skin.js as data-skin="ios" or data-skin="android" on <html>,
+ * from the link's page_style and the guest's device. Every rule here is scoped
+ * to one of those, so the standard look is exactly what it was without them.
+ *
+ * Plain CSS on purpose, not Tailwind: it is loaded after dist.css and wins by
+ * specificity, and it needs no build step. It restyles the hooks buildCard()
+ * puts on each card (.ha-card, .ha-card-row, data-tile, data-active) and the
+ * section containers ([data-group]); it never changes what a control does.
+ *
+ * Both looks are in the style of each platform's own smart-home app: compact
+ * two-up tiles for anything with no controls of its own, full-width cards for
+ * the rest, and a tile that lights up while its device is on. Neither uses a
+ * platform's logos, names or proprietary fonts; the system font of the device
+ * is what makes them feel native.
+ */
+
+/* ── Shared: the two-up tile grid ─────────────────────────────────────── */
+
+html[data-skin] div[data-group]:not([hidden]) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+html[data-skin] .ha-card { margin-bottom: 0; }
+/* Anything with its own controls (brightness, climate, media, camera...) spans
+   the row, as it does in a phone's home app. */
+html[data-skin] .ha-card:not([data-tile]) { grid-column: 1 / -1; }
+/* A tile is tapped as a whole, so its switch would only be a second, smaller
+   way to do the same thing. The tile keeps role="button" and its label. */
+html[data-skin] .ha-card[data-tile] .toggle-track { display: none; }
+html[data-skin] .ha-card[data-tile] { min-height: 64px; display: flex; align-items: center; }
+html[data-skin] .ha-card[data-tile] > .ha-card-row { width: 100%; }
+html[data-skin] .ha-card { transition: background-color .25s ease, color .25s ease; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-skin] .ha-card { transition: none; }
+}
+
+/* ── iOS ──────────────────────────────────────────────────────────────── */
+
+html[data-skin="ios"] {
+  --ios-label: rgba(0, 0, 0, .88);
+  --ios-secondary: rgba(60, 60, 67, .65);
+  --ios-tile: rgba(255, 255, 255, .42);
+  --ios-tile-active: rgba(255, 255, 255, .96);
+  --ios-icon-off: rgba(120, 120, 128, .22);
+  --ios-green: #34c759;
+  --ios-wallpaper:
+    radial-gradient(120% 80% at 10% 0%, #d7c9e6 0%, transparent 60%),
+    radial-gradient(120% 80% at 100% 100%, #f3d3bd 0%, transparent 60%),
+    linear-gradient(160deg, #c8d7ea 0%, #e7dfe6 55%, #f0e2d6 100%);
+}
+html[data-skin="ios"].dark {
+  --ios-label: rgba(255, 255, 255, .95);
+  --ios-secondary: rgba(235, 235, 245, .6);
+  --ios-tile: rgba(44, 44, 48, .55);
+  --ios-tile-active: rgba(255, 255, 255, .94);
+  --ios-icon-off: rgba(118, 118, 128, .32);
+  --ios-green: #30d158;
+  --ios-wallpaper:
+    radial-gradient(120% 80% at 0% 0%, #2c3a57 0%, transparent 60%),
+    radial-gradient(120% 80% at 100% 100%, #4a2f3a 0%, transparent 60%),
+    linear-gradient(160deg, #1a2233 0%, #211b26 55%, #2a1e1e 100%);
+}
+
+html[data-skin="ios"] body {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  background: var(--ios-wallpaper) fixed;
+  background-color: #d9dde6;
+  color: var(--ios-label);
+  -webkit-font-smoothing: antialiased;
+}
+html[data-skin="ios"].dark body { background-color: #1b1d24; }
+/* Every one of the app's own typefaces gives way to the system font. */
+html[data-skin="ios"] body .font-display,
+html[data-skin="ios"] body .font-sans,
+html[data-skin="ios"] body .font-serif,
+html[data-skin="ios"] body .font-mono { font-family: inherit; }
+
+/* Frosted bar over the wallpaper, no rule under it. */
+html[data-skin="ios"] header.sticky {
+  background: rgba(255, 255, 255, .28);
+  border-bottom-color: transparent;
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+html[data-skin="ios"].dark header.sticky { background: rgba(20, 20, 24, .35); }
+
+html[data-skin="ios"] #cards-container h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ios-label);
+  padding-top: 22px;
+  letter-spacing: -.01em;
+}
+
+html[data-skin="ios"] .ha-card {
+  background: var(--ios-tile);
+  border-radius: 18px;
+  box-shadow: none;
+  padding: 11px 12px;
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  color: var(--ios-label);
+}
+html[data-skin="ios"] .ha-card .ha-card-name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+html[data-skin="ios"] .ha-card .ha-card-state,
+html[data-skin="ios"] .ha-card .text-muted { color: var(--ios-secondary); }
+html[data-skin="ios"] .ha-card .ha-card-state { font-size: 13px; }
+html[data-skin="ios"] .ha-card .entity-shape { width: 36px; height: 36px; }
+
+/* Off: a grey icon on a grey disc. On: the tile turns white with dark text and
+   the icon takes the device's own colour, which buildCard already sets. */
+html[data-skin="ios"] .ha-card[data-tile][data-active="false"] .entity-shape {
+  background-color: var(--ios-icon-off) !important;
+}
+html[data-skin="ios"] .ha-card[data-tile][data-active="false"] .entity-shape .material-symbols-outlined {
+  color: var(--ios-secondary) !important;
+}
+html[data-skin="ios"] .ha-card[data-tile][data-active="true"] {
+  background: var(--ios-tile-active);
+  color: rgba(0, 0, 0, .9);
+}
+html[data-skin="ios"] .ha-card[data-tile][data-active="true"] .ha-card-state,
+html[data-skin="ios"] .ha-card[data-tile][data-active="true"] .text-muted {
+  color: rgba(60, 60, 67, .7);
+}
+html[data-skin="ios"] .ha-card[data-tile][data-active="true"] .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* The system switch: green when on. */
+html[data-skin="ios"] .toggle-track { background: rgba(120, 120, 128, .32); }
+html[data-skin="ios"] .toggle-track.on { background: var(--ios-green); }
+
+/* Sliders: a thin track with the system's white knob. */
+html[data-skin="ios"] input[type="range"] { height: 4px; background: rgba(120, 120, 128, .3); }
+html[data-skin="ios"] input[type="range"]::-webkit-slider-thumb {
+  width: 28px; height: 28px; border: none;
+  box-shadow: 0 0.5px 4px rgba(0, 0, 0, .12), 0 6px 13px rgba(0, 0, 0, .12);
+}
+
+/* The Type | Area switch as a segmented control. */
+html[data-skin="ios"] .layout-switch { border-radius: 9px; background: rgba(118, 118, 128, .18); }
+html[data-skin="ios"] [data-action="group-by"] { border-radius: 7px; }
+
+/* ── Android ──────────────────────────────────────────────────────────── */
+
+/* Material 3 tonal surfaces, tinted from the link's own primary colour so a
+   branded link stays on brand. color-mix is in every browser Android ships
+   today; where it is missing the plain fallbacks before each mix apply. */
+html[data-skin="android"] {
+  --md-primary: rgb(var(--color-primary));
+  --md-surface: #fbf8fd;
+  --md-surface: color-mix(in srgb, var(--md-primary) 3%, #fdfbff);
+  --md-container: #eceaf0;
+  --md-container: color-mix(in srgb, var(--md-primary) 6%, #ebe9ee);
+  --md-primary-container: #f5ddd7;
+  --md-primary-container: color-mix(in srgb, var(--md-primary) 28%, #ffffff);
+  --md-on-primary-container: #3b0d04;
+  --md-on-primary-container: color-mix(in srgb, var(--md-primary) 45%, #000000);
+  --md-on-surface: #1b1b1f;
+  --md-on-surface-variant: #46464f;
+  --md-outline: #777680;
+}
+html[data-skin="android"].dark {
+  --md-surface: #131316;
+  --md-surface: color-mix(in srgb, var(--md-primary) 4%, #121316);
+  --md-container: #25252a;
+  --md-container: color-mix(in srgb, var(--md-primary) 7%, #222327);
+  --md-primary-container: #5c2a20;
+  --md-primary-container: color-mix(in srgb, var(--md-primary) 40%, #1b1b1f);
+  --md-on-primary-container: #ffdad2;
+  --md-on-primary-container: color-mix(in srgb, var(--md-primary) 25%, #ffffff);
+  --md-on-surface: #e4e1e6;
+  --md-on-surface-variant: #c7c5d0;
+  --md-outline: #918f9a;
+}
+
+html[data-skin="android"] body {
+  font-family: Roboto, system-ui, "Segoe UI", sans-serif;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+/* Every one of the app's own typefaces gives way to the system font. */
+html[data-skin="android"] body .font-display,
+html[data-skin="android"] body .font-sans,
+html[data-skin="android"] body .font-serif,
+html[data-skin="android"] body .font-mono { font-family: inherit; }
+
+/* A flat top app bar in the surface colour. */
+html[data-skin="android"] header.sticky {
+  background: var(--md-surface);
+  border-bottom-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-skin="android"] #cards-container h2 {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: .01em;
+  color: var(--md-on-surface-variant);
+  padding-top: 20px;
+}
+
+html[data-skin="android"] .ha-card {
+  background: var(--md-container);
+  border-radius: 24px;
+  box-shadow: none;
+  padding: 12px 16px;
+  color: var(--md-on-surface);
+}
+html[data-skin="android"] .ha-card[data-tile] { border-radius: 20px; min-height: 72px; }
+html[data-skin="android"] .ha-card .ha-card-name { font-size: 14px; font-weight: 500; }
+html[data-skin="android"] .ha-card .ha-card-state,
+html[data-skin="android"] .ha-card .text-muted { color: var(--md-on-surface-variant); }
+html[data-skin="android"] .ha-card .ha-card-state { font-size: 12px; }
+
+/* Material tiles carry a bare icon, no disc behind it. */
+html[data-skin="android"] .ha-card[data-tile] .entity-shape {
+  background: transparent !important;
+  width: 28px; height: 28px;
+}
+html[data-skin="android"] .ha-card[data-tile] .entity-shape .material-symbols-outlined { font-size: 24px; }
+html[data-skin="android"] .ha-card[data-tile][data-active="false"] .entity-shape .material-symbols-outlined {
+  color: var(--md-on-surface-variant) !important;
+}
+/* On: the tile fills with the primary container colour. */
+html[data-skin="android"] .ha-card[data-tile][data-active="true"] {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+html[data-skin="android"] .ha-card[data-tile][data-active="true"] .ha-card-state,
+html[data-skin="android"] .ha-card[data-tile][data-active="true"] .text-muted,
+html[data-skin="android"] .ha-card[data-tile][data-active="true"] .entity-shape .material-symbols-outlined {
+  color: var(--md-on-primary-container) !important;
+}
+html[data-skin="android"] .ha-card[data-tile][data-active="true"] .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Material 3 switch: an outlined track with a small thumb when off, a filled
+   track with a large thumb when on. Same 52x32 footprint as the standard one. */
+html[data-skin="android"] .toggle-track {
+  width: 52px; height: 32px; border-radius: 16px;
+  background: var(--md-container);
+  box-shadow: inset 0 0 0 2px var(--md-outline);
+}
+html[data-skin="android"] .toggle-track::after {
+  top: 8px; left: 8px; width: 16px; height: 16px;
+  background: var(--md-outline); box-shadow: none;
+  transition: transform .2s ease, width .2s ease, height .2s ease, top .2s ease, left .2s ease;
+}
+html[data-skin="android"] .toggle-track.on { background: var(--md-primary); box-shadow: none; }
+html[data-skin="android"] .toggle-track.on::after {
+  top: 4px; left: 4px; width: 24px; height: 24px;
+  background: #fff;
+  transform: translateX(20px);
+}
+
+/* Sliders: a thick rounded track, as Material 3 draws them. */
+html[data-skin="android"] input[type="range"] { height: 16px; border-radius: 8px; background: var(--md-primary-container); }
+html[data-skin="android"] input[type="range"]::-webkit-slider-thumb {
+  width: 4px; height: 32px; border-radius: 2px; border: none;
+  background: var(--md-primary); box-shadow: none;
+}
+
+/* The Type | Area switch as a segmented button. */
+html[data-skin="android"] [data-action="group-by"] { border-radius: 9999px; }
+html[data-skin="android"] [data-action="group-by"][aria-pressed="true"] {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  box-shadow: none;
+}

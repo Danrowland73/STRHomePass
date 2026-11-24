@@ -109,6 +109,9 @@ async def create_token(
     info_text_in_footer: bool = False,
     group_headings: dict[str, dict[str, Any]] | None = None,
     branding: dict[str, Any] | None = None,
+    group_by: str = "type",
+    guest_can_regroup: bool = True,
+    page_style: str = "standard",
 ) -> dict[str, Any]:
     db = await get_db()
     token_id = str(uuid.uuid4())
@@ -127,13 +130,14 @@ async def create_token(
                (id, slug, label, created_at, starts_at, expires_at, ip_allowlist, pin_hash,
                 access_windows, max_uses, remember_pin, device_binding, country_allowlist,
                 show_remaining_uses, info_text, info_text_in_footer, group_headings,
-                branding)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                branding, group_by, guest_can_regroup, page_style)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (token_id, slug, label, now, starts_at, expires_at, ip_json, pin_hash,
              windows_json, max_uses, int(bool(remember_pin)), int(bool(device_binding)),
              country_json, int(bool(show_remaining_uses)), info_text,
              int(bool(info_text_in_footer)), json.dumps(group_headings or {}),
-             _dump_branding(branding or {})),
+             _dump_branding(branding or {}), group_by, int(bool(guest_can_regroup)),
+             page_style),
         )
         if entity_ids:
             meta = entity_meta or {}
@@ -566,6 +570,29 @@ async def set_token_group_headings(
     await db.execute(
         "UPDATE tokens SET group_headings = COALESCE(?, group_headings) WHERE id = ?",
         (value, token_id),
+    )
+    await db.commit()
+
+
+async def set_token_layout(
+    token_id: str,
+    group_by: str | None,
+    guest_can_regroup: bool | None,
+    page_style: str | None = None,
+) -> None:
+    """Set how a link's guest page groups and styles its entities. None keeps a field.
+
+    group_by is "type" or "area" and page_style one of models.PageStyle
+    (checked by the request models); guest_can_regroup is whether the guest
+    may switch between the groupings.
+    """
+    db = await get_db()
+    await db.execute(
+        "UPDATE tokens SET group_by = COALESCE(?, group_by), "
+        "guest_can_regroup = COALESCE(?, guest_can_regroup), "
+        "page_style = COALESCE(?, page_style) WHERE id = ?",
+        (group_by, None if guest_can_regroup is None else int(guest_can_regroup),
+         page_style, token_id),
     )
     await db.commit()
 

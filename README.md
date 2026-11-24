@@ -572,7 +572,8 @@ curl -X POST -H "X-API-Key: $HOMEPASS_API_TOKEN" -H "Content-Type: application/j
 
 Endpoints under `/api/v1/tokens`: list, create, get, `PATCH` (label, entities,
 expiry, PIN, `remember_pin`, `device_binding`, `show_remaining_uses`,
-`info_text`, `info_text_in_footer`, `group_headings`, `branding`), `DELETE`,
+`info_text`, `info_text_in_footer`, `group_headings`, `group_by`,
+`guest_can_regroup`, `page_style`, `branding`), `DELETE`,
 `PUT .../{id}/schedule` (start, end, weekly windows, use limit), `POST .../{id}/revoke`, `renew`,
 `activate`, `rotate-slug`, `duplicate` and `unbind`, and
 `.../{id}/access-codes` (list, create, `{code_id}/rotate`, `DELETE {code_id}`)

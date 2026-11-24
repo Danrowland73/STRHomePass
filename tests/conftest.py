@@ -117,6 +117,10 @@ def mock_ha_client():
         # that do care set a return value of
         # {"labels": [...], "entity_labels": {...}}.
         "get_label_registry": AsyncMock(return_value=None),
+        # None is "areas cannot be read", so the guest page draws the type
+        # layout. Tests of the area layout set
+        # {"areas": {area_id: name}, "entity_areas": {entity_id: area_id}}.
+        "get_area_map": AsyncMock(return_value=None),
     }
     with patch.multiple("app.ha_client", **mocks):
         yield mocks
@@ -170,6 +174,8 @@ def _reset_registry_cache():
     ha_client._registry_cache = None
     ha_client._registry_cache_ts = 0.0
     ha_client._registry_denied_at = None
+    ha_client._area_cache = None
+    ha_client._area_cache_ts = None
 
 
 @pytest.fixture(autouse=True)

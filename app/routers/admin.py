@@ -245,6 +245,12 @@ def _row_to_response(row: Any, entity_ids: list[str] | None = None,
         # Only the section headings the admin renamed or hid, by group key;
         # {} is every heading as default.
         "group_headings": db.group_headings_from_row(row["group_headings"]),
+        # The guest page's opening layout ("type" or "area") and whether the
+        # guest may switch it themselves.
+        "group_by": row["group_by"],
+        "guest_can_regroup": bool(row["guest_can_regroup"]),
+        # The guest page's look: "standard", "device", "ios" or "android".
+        "page_style": row["page_style"],
         # Eyebrow, title, logo size, the link's own colours (null while it uses
         # the global ones) and whether a logo is uploaded. The image itself is
         # never part of a token response.
@@ -347,6 +353,9 @@ async def _create_token(body: TokenCreateRequest, expires_at: int | None = None)
         info_text_in_footer=body.info_text_in_footer,
         group_headings=body.group_headings,
         branding=branding.stored(body.branding.model_dump()) if body.branding else None,
+        group_by=body.group_by,
+        guest_can_regroup=body.guest_can_regroup,
+        page_style=body.page_style,
     )
     if body.copy_logo_from:
         # Duplicate. Checked after the link exists so a bad id cannot leave a
@@ -484,6 +493,28 @@ async def _set_group_headings_if_changed(row: Any, group_headings: dict | None) 
     if group_headings == db.group_headings_from_row(row["group_headings"]):
         return False
     await db.set_token_group_headings(row["id"], group_headings)
+    return True
+
+
+async def _set_layout_if_changed(
+    row: Any, group_by: str | None, guest_can_regroup: bool | None,
+    page_style: str | None = None,
+) -> bool:
+    """Store a link's guest page layout. True only if that changed it.
+
+    Shared with the public API, under the same rule as
+    _set_group_headings_if_changed: None keeps a field, and a value equal to
+    what is stored writes nothing, so open guest pages reload only for a change.
+    """
+    if group_by == row["group_by"]:
+        group_by = None
+    if guest_can_regroup is not None and guest_can_regroup == bool(row["guest_can_regroup"]):
+        guest_can_regroup = None
+    if page_style == row["page_style"]:
+        page_style = None
+    if group_by is None and guest_can_regroup is None and page_style is None:
+        return False
+    await db.set_token_layout(row["id"], group_by, guest_can_regroup, page_style)
     return True
 
 
@@ -683,7 +714,12 @@ async def update_token_entities(
         token_id, body.entity_ids, _clean_entity_meta(body.entity_meta)
     )
     await ha_client.invalidate_entity_cache(token_id)
-    if await _set_group_headings_if_changed(row, body.group_headings):
+    headings_changed = await _set_group_headings_if_changed(row, body.group_headings)
+    layout_changed = await _set_layout_if_changed(
+        row, body.group_by, body.guest_can_regroup, body.page_style
+    )
+    if headings_changed or layout_changed:
+        # Open guest pages read both at load; reload them so the change shows.
         await ha_client.broadcast_schedule_changed(token_id)
     entity_ids = await db.get_token_entities(token_id)
     meta = await db.get_token_entity_meta(token_id)

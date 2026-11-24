@@ -11,6 +11,8 @@ const CACHE_VERSION = 'CACHE_VERSION_PLACEHOLDER';
 // entry can never survive to be matched.
 const SHELL_ASSETS = [
   '/static/dist.css',
+  '/static/skins.css',
+  '/static/skin.js',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
   '/static/icons/icon-maskable-192.png',

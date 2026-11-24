@@ -647,8 +647,10 @@ const ACTIVITY_COLLAPSED_COUNT = 3;
 
 // Picker state (separate for create vs edit)
 // groupHeadings: { group_key: {name, locked} }, the link's section headings.
-let createPicker = { selected: new Set(), filter: 'all', label: '', search: '', meta: {}, groupHeadings: {} };
-let editPicker = { selected: new Set(), filter: 'all', label: '', search: '', meta: {}, groupHeadings: {} };
+// groupBy / guestCanRegroup: the guest page's opening layout ('type' or 'area')
+// and whether the guest may switch it.
+let createPicker = { selected: new Set(), filter: 'all', label: '', search: '', meta: {}, groupHeadings: {}, groupBy: 'type', guestCanRegroup: true, pageStyle: 'standard' };
+let editPicker = { selected: new Set(), filter: 'all', label: '', search: '', meta: {}, groupHeadings: {}, groupBy: 'type', guestCanRegroup: true, pageStyle: 'standard' };
 // Which picker the save-template modal is reading its selection from.
 let templateModalContainer = null;
 // Which picker + entity the entity-settings modal is currently editing.
@@ -1164,6 +1166,55 @@ function setGroupHeading(containerId, key, changes) {
   pickerState.groupHeadings[key] = { name: '', locked: false, ...pickerState.groupHeadings[key], ...changes };
 }
 
+// The guest page's looks, in the order the menu lists them. "device" follows
+// the guest's phone; see static/skin.js.
+const PAGE_STYLES = ['standard', 'device', 'ios', 'android'];
+const pageStyleOrStandard = v => (PAGE_STYLES.includes(v) ? v : 'standard');
+
+// The guest page's layout. Changing it updates the state without a re-render,
+// like the heading inputs, so focus stays where the admin left it.
+function setPickerLayout(containerId, changes) {
+  Object.assign(getPickerState(containerId), changes);
+}
+
+function layoutHtml(containerId, pickerState) {
+  const name = `${containerId}-group-by`;
+  const radio = (value, icon, label) => `
+        <label class="flex-1 flex items-center gap-2 px-3 py-2 cursor-pointer">
+          <input type="radio" name="${name}" value="${value}" ${pickerState.groupBy === value ? 'checked' : ''}
+            data-action="picker-group-by" data-container="${containerId}"
+            class="w-4 h-4 accent-primary">
+          <span aria-hidden="true" class="material-symbols-outlined text-muted text-lg">${icon}</span>
+          <span class="text-sm">${esc(label)}</span>
+        </label>`;
+  return `
+    <div class="mb-3">
+      <div class="text-[11px] font-mono font-bold uppercase tracking-wider text-muted mb-1 px-1">${esc(tr('picker.layout'))}</div>
+      <p class="text-[11px] text-muted mb-1.5 px-1">${esc(tr('picker.layout_hint'))}</p>
+      <div class="border border-border-light dark:border-border-dark rounded-xl bg-surface-light dark:bg-surface-dark">
+        <div class="flex border-b border-border-light dark:border-border-dark" role="radiogroup" aria-label="${esc(tr('picker.layout'))}">
+          ${radio('type', 'category', tr('picker.layout_type'))}
+          ${radio('area', 'meeting_room', tr('picker.layout_area'))}
+        </div>
+        <label class="flex items-center gap-2 px-3 py-2 text-xs text-muted cursor-pointer border-b border-border-light dark:border-border-dark">
+          <input type="checkbox" ${pickerState.guestCanRegroup ? 'checked' : ''}
+            data-action="picker-guest-regroup" data-container="${containerId}"
+            class="w-4 h-4 rounded border-border-light dark:border-border-dark accent-primary">
+          ${esc(tr('picker.layout_guest_switch'))}
+        </label>
+        <label class="flex items-center gap-3 px-3 py-2">
+          <span aria-hidden="true" class="material-symbols-outlined text-muted text-lg flex-shrink-0">smartphone</span>
+          <span class="text-sm flex-shrink-0">${esc(tr('picker.style'))}</span>
+          <select data-action="picker-page-style" data-container="${containerId}"
+            class="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-border-light dark:border-border-dark bg-bg-light dark:bg-bg-dark text-sm outline-none focus:border-primary">
+            ${PAGE_STYLES.map(v => `<option value="${v}"${pickerState.pageStyle === v ? ' selected' : ''}>${esc(tr(`picker.style_${v}`))}</option>`).join('')}
+          </select>
+        </label>
+        <p class="text-[11px] text-muted px-3 pb-2">${esc(tr('picker.style_hint'))}</p>
+      </div>
+    </div>`;
+}
+
 function groupHeadingsHtml(containerId, pickerState) {
   const keys = pickerGroupKeys(pickerState);
   if (!keys.length) return '';
@@ -1313,6 +1364,7 @@ function renderPicker(containerId, pickerState) {
         ${!selected.length ? `<li class="px-3 py-4 text-center text-xs text-muted">${esc(tr('picker.no_selected_match'))}</li>` : ''}
       </ul>
     </div>` : ''}
+    ${layoutHtml(containerId, pickerState)}
     ${groupHeadingsHtml(containerId, pickerState)}
     <div class="mb-2">
       <div class="flex items-center justify-between mb-1.5 px-1">
@@ -1923,6 +1975,9 @@ function openCreateModal(preset = {}) {
     selected: new Set(preset.entityIds || []), filter: 'all', label: '', search: '',
     meta: JSON.parse(JSON.stringify(preset.entityMeta || {})),
     groupHeadings: JSON.parse(JSON.stringify(preset.groupHeadings || {})),
+    groupBy: preset.groupBy === 'area' ? 'area' : 'type',
+    guestCanRegroup: preset.guestCanRegroup !== false,
+    pageStyle: pageStyleOrStandard(preset.pageStyle),
   };
   document.getElementById('create-modal-title').textContent = preset.title || tr('create.title');
   document.getElementById('f-label').value = preset.label || '';
@@ -1978,6 +2033,9 @@ async function submitCreate() {
     entity_ids: [...createPicker.selected],
     entity_meta: createPicker.meta,
     group_headings: pickerGroupHeadings(createPicker),
+    group_by: createPicker.groupBy,
+    guest_can_regroup: createPicker.guestCanRegroup,
+    page_style: createPicker.pageStyle,
     ...timing.body,
     ip_allowlist: ipList,
     country_allowlist: countryList,
@@ -2037,6 +2095,9 @@ async function duplicateToken(tokenId) {
     infoText: token.info_text,
     infoTextInFooter: token.info_text_in_footer,
     groupHeadings: token.group_headings || {},
+    groupBy: token.group_by,
+    guestCanRegroup: token.guest_can_regroup,
+    pageStyle: token.page_style,
     branding: token,
     copyLogoFrom: token.id,
   });
@@ -2773,7 +2834,7 @@ async function submitPin() {
 // ── Edit Entities Modal ───────────────────────────────────────────────
 async function openEditModal(tokenId) {
   editTokenId = tokenId;
-  editPicker = { selected: new Set(), filter: 'all', label: '', search: '', meta: {}, groupHeadings: {} };
+  editPicker = { selected: new Set(), filter: 'all', label: '', search: '', meta: {}, groupHeadings: {}, groupBy: 'type', guestCanRegroup: true, pageStyle: 'standard' };
   document.getElementById('edit-error').textContent = '';
   document.getElementById('edit-token-label').textContent = tr('common.loading');
   document.getElementById('edit-picker').innerHTML = `<div class="text-center py-8 text-muted text-sm">${esc(tr('edit.loading_entities'))}</div>`;
@@ -2788,6 +2849,9 @@ async function openEditModal(tokenId) {
   }
   editPicker.meta = token.entity_meta || {};
   editPicker.groupHeadings = token.group_headings || {};
+  editPicker.groupBy = token.group_by === 'area' ? 'area' : 'type';
+  editPicker.guestCanRegroup = token.guest_can_regroup !== false;
+  editPicker.pageStyle = pageStyleOrStandard(token.page_style);
   renderPicker('edit-picker', editPicker);
 }
 function closeEditModal() { closeModal('edit-modal'); editTokenId = null; document.getElementById('edit-picker').innerHTML = ''; }
@@ -2804,6 +2868,9 @@ async function submitEditEntities() {
       entity_ids: [...editPicker.selected],
       entity_meta: editPicker.meta,
       group_headings: pickerGroupHeadings(editPicker),
+      group_by: editPicker.groupBy,
+      guest_can_regroup: editPicker.guestCanRegroup,
+      page_style: editPicker.pageStyle,
     }),
   });
 
@@ -3668,6 +3735,15 @@ document.addEventListener('change', e => {
   }
   if (e.target.dataset.action === 'timing-advanced') {
     setAdvanced(e.target.dataset.prefix, e.target.checked);
+  }
+  if (e.target.dataset.action === 'picker-group-by') {
+    setPickerLayout(e.target.dataset.container, { groupBy: e.target.value });
+  }
+  if (e.target.dataset.action === 'picker-page-style') {
+    setPickerLayout(e.target.dataset.container, { pageStyle: pageStyleOrStandard(e.target.value) });
+  }
+  if (e.target.dataset.action === 'picker-guest-regroup') {
+    setPickerLayout(e.target.dataset.container, { guestCanRegroup: e.target.checked });
   }
   if (e.target.dataset.action === 'group-heading-locked') {
     setGroupHeading(e.target.dataset.container, e.target.dataset.group, { locked: e.target.checked });

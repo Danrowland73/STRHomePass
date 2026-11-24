@@ -1,6 +1,6 @@
 """Pydantic request/response models."""
 import re
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -280,6 +280,17 @@ def clean_group_headings(value: Any) -> Any:
     return cleaned
 
 
+# How the guest page groups a link's entities: by kind ("Lights", "Switches"),
+# which is how every link drew before this existed, or by Home Assistant area
+# ("Kitchen", "Garden"). Presentation only — nothing in the command path reads it.
+GroupBy = Literal["type", "area"]
+
+# The look of the guest page. "device" picks "ios" on iPhone and iPad and
+# "android" on Android phones, in the guest's browser, and "standard" anywhere
+# else. Presentation only, like GroupBy.
+PageStyle = Literal["standard", "device", "ios", "android"]
+
+
 class BrandingInput(BaseModel):
     """A link's branding as sent when creating one, or copied from another.
 
@@ -393,6 +404,12 @@ class TokenCreateRequest(BaseModel):
     # a section. None and {} both mean every heading as default. See
     # clean_group_headings.
     group_headings: dict[str, Any] | None = None
+    # The layout the guest page opens with, and whether the guest may switch
+    # it on their own page. The defaults are the page as it always was.
+    group_by: GroupBy = "type"
+    guest_can_regroup: bool = True
+    # The look of the guest page; "standard" is the page as it always was.
+    page_style: PageStyle = "standard"
     # Eyebrow, title, logo size and colours for the link's pages. None is
     # unbranded. The logo image is uploaded after the link exists, or copied
     # from another link with copy_logo_from (what Duplicate does).
@@ -459,6 +476,10 @@ class TokenUpdateEntitiesRequest(BaseModel):
     # Saved with the entities because the dashboard edits both in one form.
     # None keeps the stored headings; {} resets them all.
     group_headings: dict[str, Any] | None = None
+    # Also edited in the entity picker. None keeps the stored value.
+    group_by: GroupBy | None = None
+    guest_can_regroup: bool | None = None
+    page_style: PageStyle | None = None
 
     _clean_group_headings = field_validator("group_headings", mode="before")(
         clean_group_headings
@@ -626,6 +647,10 @@ class ApiTokenUpdateRequest(BaseModel):
     info_text_in_footer: bool | None = None
     # Same as the dashboard's Section headings: None keeps, {} resets.
     group_headings: dict[str, Any] | None = None
+    # Same as the dashboard's Guest page layout: None keeps.
+    group_by: GroupBy | None = None
+    guest_can_regroup: bool | None = None
+    page_style: PageStyle | None = None
     # Same as the dashboard's Branding dialog; see TokenBrandingRequest.
     branding: TokenBrandingRequest | None = None
 
@@ -739,6 +764,9 @@ class ApiTokenResponse(BaseModel):
     # Only the headings the admin changed, keyed by group key; {} is all
     # defaults.
     group_headings: dict[str, ApiGroupHeading]
+    group_by: GroupBy = "type"
+    guest_can_regroup: bool = True
+    page_style: PageStyle = "standard"
     branding: ApiBranding = Field(default_factory=ApiBranding)
     country_allowlist: list[str] | None
     device_binding: bool

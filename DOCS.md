@@ -249,6 +249,35 @@ In the [Public API](#public-api), `group_headings` is accepted on create and `PA
 {"light": {"name": "Lamps", "locked": false}, "switch": {"name": "", "locked": true}}
 ```
 
+## Group by type or area
+
+Each link chooses how its guest page groups devices, under **Guest page layout** in the create form and **Edit Entities**:
+
+- **By type** (the default): the sections described above, such as "Lights" and "Switches".
+- **By area**: one section per [Home Assistant area](https://www.home-assistant.io/docs/organizing/areas/), such as "Kitchen" or "Garden", in alphabetical order. Within an area, devices keep the type order (lights, then switches, and so on). A device gets the area set on the entity itself, or else the area of its device. Devices with neither go in a last **No area** section.
+
+**Let the guest switch between type and area** is on by default. It shows a small **Type | Area** switch at the top of the guest page. The guest's browser remembers their choice for that link. Turn it off and the guest always sees the layout you picked.
+
+The guest only receives area names for the devices on their own link, never the rest of your home. Areas are read from Home Assistant's registries and refreshed every 10 minutes. If Home Assistant will not list them, or none of the link's devices has an area, the page uses the type layout and shows no switch. Renamed and locked section headings apply only to the type layout. A link that has not started yet previews in the type layout.
+
+Changing the layout reloads the link's open guest pages, and **Duplicate** copies it. In the [Public API](#public-api), `group_by` (`"type"` or `"area"`) and `guest_can_regroup` (true or false) are accepted on create and `PATCH /api/v1/tokens/{id}`, and returned in every token response.
+
+## Page style (iOS and Android looks)
+
+Each link chooses the look of its guest page with **Page style**, under **Guest page layout** in the create form and **Edit Entities**:
+
+- **Standard** (the default): the HomePass look.
+- **Match the guest's phone**: an iOS look on iPhone and iPad, an Android look on Android phones and tablets, and Standard on anything else.
+- **iOS style** or **Android style**: that look on every device. Use these to preview a look from a computer.
+
+The **iOS style** is in the style of a smart-home app on iPhone. It has frosted tiles over a soft wallpaper, two tiles to a row, and a tile turns white while its device is on. It uses the iPhone's system font and green switches. The **Android style** follows Material 3. It has rounded tonal tiles, two to a row, that fill with a tint of the link's primary color while the device is on, plus Material switches and sliders and the phone's system font. Both follow the guest's light or dark theme. Neither uses Apple's or Google's logos or names.
+
+In both, a device with no controls of its own (a switch, or a light without the brightness slider) becomes a compact tile, and tapping the tile turns it on or off. Anything with controls, such as a dimmable light, a thermostat, a lock or a camera, takes a full row. Only the look changes: every control, command and access check is the same as in Standard.
+
+The device is detected in the guest's browser from its user agent, before the page is drawn, so the page never flashes the wrong look. iPads that ask for desktop websites are still recognized. A browser that hides its device gets Standard.
+
+Changing the style reloads the link's open guest pages, and **Duplicate** copies it. In the [Public API](#public-api), `page_style` (`"standard"`, `"device"`, `"ios"` or `"android"`) is accepted on create and `PATCH /api/v1/tokens/{id}` and returned in every token response.
+
 ## Link branding
 
 Each link can have its own logo, title and eyebrow text, all optional, set in the create form or with the **Branding** button on the link's card. In the guest page's pinned header the logo replaces the person icon, the title replaces the link's label and the eyebrow replaces the app name. Anything left blank keeps the usual part.

@@ -892,3 +892,62 @@ async def get_label_registry() -> dict[str, Any] | None:
     _registry_cache = {"labels": catalogue, "entity_labels": entity_labels}
     _registry_cache_ts = now
     return _registry_cache
+
+
+# ---------------------------------------------------------------------------
+# Area registry — where each entity lives, for the guest page's area layout
+# ---------------------------------------------------------------------------
+# An entity's area is its own registry area_id when set, otherwise the area of
+# the device it belongs to: that is the rule HA's own UI follows, and most
+# entities only ever get an area through their device. All three list
+# commands are read-only and, like the label reads above, carry no
+# @require_admin, so the same non-admin HA_TOKEN can read them.
+#
+# The area layout is presentation only. Any failure degrades to None, which
+# the guest page reads as "areas unavailable" and draws the type layout
+# instead. A failure is remembered for the same TTL as a success, so a guest
+# page refetching on every reconnect cannot turn an HA that refuses these
+# reads into a stream of refused commands and log lines.
+_area_cache: dict[str, Any] | None = None
+_area_cache_ts: float | None = None
+
+
+async def get_area_map() -> dict[str, Any] | None:
+    """Return {"areas": {area_id: name}, "entity_areas": {entity_id: area_id}}, or None.
+
+    entity_areas holds only entities that resolve to an area that exists; an
+    entity missing from it has no area. None means areas cannot be read at all.
+    """
+    global _area_cache, _area_cache_ts
+    now = time.monotonic()
+    if _area_cache_ts is not None and (now - _area_cache_ts) < REGISTRY_CACHE_TTL:
+        return _area_cache
+
+    result: dict[str, Any] | None = None
+    try:
+        areas = await ws_command({"type": "config/area_registry/list"})
+        devices = await ws_command({"type": "config/device_registry/list"})
+        entries = await ws_command({"type": "config/entity_registry/list"})
+        names = {
+            area["area_id"]: (area.get("name") or area["area_id"])
+            for area in areas or []
+        }
+        device_areas = {
+            device["id"]: device["area_id"]
+            for device in devices or []
+            if device.get("area_id")
+        }
+        entity_areas: dict[str, str] = {}
+        for entry in entries or []:
+            area_id = entry.get("area_id") or device_areas.get(entry.get("device_id"))
+            if area_id in names:
+                entity_areas[entry["entity_id"]] = area_id
+        result = {"areas": names, "entity_areas": entity_areas}
+    except WSCommandError as exc:
+        logger.warning("Could not read the HA area registry: %s", exc)
+    except Exception as exc:  # malformed payload, anything unforeseen
+        logger.warning("HA area registry reply was not in the expected shape: %s", exc)
+
+    _area_cache = result
+    _area_cache_ts = now
+    return result

@@ -9,6 +9,13 @@ HomePass is a fork of [Rohithkadaveru/ha-pass](https://github.com/Rohithkadaveru
 unmaintained upstream since April 2026. Releases up to and including 0.2.4 are
 upstream's; 0.3.0 is the first release from this fork.
 
+## [1.6.0] - 2026-11-24
+
+### Added
+
+- **Group devices by area.** Each link can now lay out its guest page by Home Assistant area ("Kitchen", "Garden") as well as by type ("Lights", "Switches"). Choose under **Guest page layout** in the create form or **Edit Entities**. **Let the guest switch between type and area** (on by default) adds a **Type | Area** switch to the guest page, and the guest's browser remembers their choice for that link. An entity's area is its own area in Home Assistant, or else its device's area. Entities without one go under **No area**. A guest only receives area names for the devices on their link. Existing links keep the type layout. Migration `017` adds `group_by` and `guest_can_regroup` to tokens, and the admin and public APIs accept and return both.
+- **iOS and Android looks.** A new **Page style** setting per link: **Standard**, **Match the guest's phone**, **iOS style** or **Android style**. Match the guest's phone detects the device in the guest's browser before the page is drawn. iPhone and iPad get an iOS look in the style of a smart-home app on iPhone, with frosted two-up tiles that turn white when on. Android gets a Material 3 look, with tonal tiles tinted by the link's primary color. Other devices keep the standard look. Devices without their own controls become compact tiles you tap to toggle. Only the look changes. The new `static/skin.js` and `static/skins.css` are plain files with no build step, and the service worker caches them. Migration `018` adds `page_style` to tokens, and the admin and public APIs accept and return it.
+
 ## [1.5.0] - 2026-11-09
 
 ### Added

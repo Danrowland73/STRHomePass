@@ -1,0 +1,13 @@
+# Kept out of the build context: local tooling and anything the image builds
+# itself. The Dockerfile generates dist.css, the icons and the GeoIP database.
+.git
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.DS_Store
+tests
+static/dist.css
+*.db
+*.sqlite

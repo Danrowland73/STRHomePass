@@ -3,10 +3,12 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-ARG TARGETARCH
+# The architecture comes from the build machine itself, not TARGETARCH: Home
+# Assistant's Supervisor builds add-ons natively on the host and does not
+# always set TARGETARCH, which would fetch the x64 binary on an ARM host.
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
-    && TWARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
+    && TWARCH=$(case "$(uname -m)" in aarch64|arm64) echo arm64 ;; *) echo x64 ;; esac) \
     && curl -sL -o /usr/local/bin/tailwindcss \
        "https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.16/tailwindcss-linux-${TWARCH}" \
     && chmod +x /usr/local/bin/tailwindcss

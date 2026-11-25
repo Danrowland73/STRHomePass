@@ -1334,7 +1334,7 @@ function renderPicker(containerId, pickerState) {
         ${selected.map(e => {
           const m = pickerState.meta[e.entity_id] || {};
           const renamed = m.display_name;
-          const showsBrightness = m.options && m.options.show_brightness;
+          const hidesBrightness = m.options && m.options.hide_brightness;
           const showsColor = m.options && m.options.show_color;
           const showsHistory = m.options && m.options.show_history;
           const gated = m.require_proximity;
@@ -1347,7 +1347,7 @@ function renderPicker(containerId, pickerState) {
             <div class="text-sm font-medium truncate flex items-center gap-1.5">
               ${esc(renamed || e.friendly_name || e.entity_id)}
               ${renamed ? '<span aria-hidden="true" class="material-symbols-outlined text-accent" style="font-size:14px" title="' + esc(tr('picker.renamed')) + '">edit</span>' : ''}
-              ${showsBrightness ? '<span aria-hidden="true" class="material-symbols-outlined text-muted" style="font-size:14px" title="' + esc(tr('picker.brightness_shown')) + '">brightness_high</span>' : ''}
+              ${hidesBrightness ? '<span aria-hidden="true" class="material-symbols-outlined text-muted" style="font-size:14px" title="' + esc(tr('picker.brightness_hidden')) + '">toggle_on</span>' : ''}
               ${showsColor ? '<span aria-hidden="true" class="material-symbols-outlined text-muted" style="font-size:14px" title="' + esc(tr('picker.color_shown')) + '">palette</span>' : ''}
               ${showsHistory ? '<span aria-hidden="true" class="material-symbols-outlined text-muted" style="font-size:14px" title="' + esc(tr('picker.history_shown')) + '">show_chart</span>' : ''}
               ${gated ? '<span aria-hidden="true" class="material-symbols-outlined text-primary" style="font-size:14px" title="' + esc(tr('picker.gated')) + '">location_on</span>' : ''}
@@ -2574,8 +2574,9 @@ function openEntityModal(containerId, entityId) {
   const lightOpts = document.getElementById('entity-light-options');
   const isLight = entityId.split('.')[0] === 'light';
   lightOpts.classList.toggle('hidden', !isLight);
+  // Ticked unless this light was set to on/off only.
   document.getElementById('entity-show-brightness').checked =
-    Boolean(meta.options && meta.options.show_brightness);
+    !(meta.options && meta.options.hide_brightness);
   document.getElementById('entity-show-color').checked =
     Boolean(meta.options && meta.options.show_color);
   const isSensor = entityId.split('.')[0] === 'sensor';
@@ -2609,13 +2610,13 @@ function submitEntityMeta() {
 
   const name = document.getElementById('entity-display-name').value.trim().slice(0, 64);
   const isLight = entityId.split('.')[0] === 'light';
-  const showBrightness = isLight && document.getElementById('entity-show-brightness').checked;
+  const hideBrightness = isLight && !document.getElementById('entity-show-brightness').checked;
   const showColor = isLight && document.getElementById('entity-show-color').checked;
   const isSensor = entityId.split('.')[0] === 'sensor';
   const showHistory = isSensor && document.getElementById('entity-show-history').checked;
 
   const options = {};
-  if (showBrightness) options.show_brightness = true;
+  if (hideBrightness) options.hide_brightness = true;
   if (showColor) options.show_color = true;
   if (showHistory) options.show_history = true;
 

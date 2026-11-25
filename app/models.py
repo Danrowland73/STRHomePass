@@ -95,15 +95,20 @@ DISPLAY_NAME_MAX = 64
 # admin API can't accumulate keys nothing renders. Presentation only — nothing in
 # the command path reads these.
 #
-# show_brightness and show_color are opt-IN: with no option set a light gets
-# on/off only, and a token has to enable the slider or the colour wheel per
-# entity. Neither gates the command path: putting a light on a token is what
-# grants light.turn_on, so these only decide what the guest UI draws.
+# The brightness slider is automatic: a light Home Assistant reports as
+# dimmable gets one, on or off, unless the token sets hide_brightness for it.
+# show_brightness is what turned the slider on when it was opt-in; it is still
+# accepted so stored links and API clients keep working, and changes nothing.
+# show_color stays opt-IN: with it unset a light gets no colour controls.
+# None of these gates the command path: putting a light on a token is what
+# grants light.turn_on, so they only decide what the guest UI draws.
 #
 # show_history is opt-in the same way, for sensors, and is the one option a
 # guest route does read: /g/{slug}/history serves nothing for an entity without
 # it, so a link only reveals the recorder's past for the sensors an admin picked.
-ENTITY_OPTION_KEYS: set[str] = {"show_brightness", "show_color", "show_history"}
+ENTITY_OPTION_KEYS: set[str] = {
+    "show_brightness", "hide_brightness", "show_color", "show_history",
+}
 
 # Colour keys HA's light.turn_on understands. Only rgb_color and
 # color_temp_kelvin are accepted from a guest: they are what the colour wheel

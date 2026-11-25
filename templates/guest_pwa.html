@@ -1306,6 +1306,23 @@ window.addEventListener('pagehide', detachCameraStreams);
 const COLOR_CAPABLE_MODES = ['rgb', 'rgbw', 'rgbww', 'hs', 'xy'];
 const WHEEL_SIZE = 220;  // px — must match the inline size on #sheet-wheel
 
+// Dimmable is anything beyond plain on/off. HA lists a light's modes in
+// supported_color_modes, on or off, so an off bulb is still recognised; every
+// mode but "onoff" carries brightness. Older integrations report no modes and
+// set bit 1 (SUPPORT_BRIGHTNESS) of supported_features instead. An unavailable
+// light reports neither and gets no slider.
+function lightSupportsBrightness(state) {
+  const attrs = state?.attributes || {};
+  const modes = attrs.supported_color_modes;
+  if (Array.isArray(modes) && modes.length) return modes.some(m => m !== 'onoff');
+  return Boolean(Number(attrs.supported_features) & 1) || attrs.brightness != null;
+}
+
+// Automatic for a dimmable light, unless the admin turned it off for this one.
+function showsBrightness(eid, state) {
+  return lightSupportsBrightness(state) && !entityOption(eid, 'hide_brightness');
+}
+
 function lightSupportsColor(state) {
   const modes = state?.attributes?.supported_color_modes || [];
   return modes.some(m => COLOR_CAPABLE_MODES.includes(m));
@@ -1409,14 +1426,15 @@ function swatchColor(state) {
 }
 
 function buildLightControls(eid, state) {
-  if (state.state !== 'on') return '';
-  // Both are opt-in: with neither enabled for this entity the light is on/off only.
-  const showBrightness = entityOption(eid, 'show_brightness');
-  const showColor = showsColorControls(eid, state);
+  // A dimmable light keeps its slider while off, so the guest can see it dims
+  // and bring it up straight to a level; 0% is off. Colour stays opt-in and
+  // only shows while the light is on.
+  const on = state.state === 'on';
+  const showBrightness = showsBrightness(eid, state);
+  const showColor = on && showsColorControls(eid, state);
   if (!showBrightness && !showColor) return '';
 
-  const brightness = Number(state.attributes?.brightness) || 255;
-  const pct = Math.round((brightness / 255) * 100);
+  const pct = brightnessPct(state);
   const swatch = showColor ? `<button type="button" class="color-swatch" id="swatch-${cssId(eid)}"
       style="background: ${swatchColor(state)}" aria-label="${esc(tr('light.choose_colour'))}"
       data-action="open-color-sheet" data-eid="${esc(eid)}"></button>` : '';
@@ -1429,13 +1447,20 @@ function buildLightControls(eid, state) {
   }
   return `<div data-slider-section class="mt-3 flex items-center gap-3">
     <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">brightness_low</span>
-    <input type="range" min="1" max="100" value="${pct}" id="bri-${cssId(eid)}"
+    <input type="range" min="0" max="100" value="${pct}" id="bri-${cssId(eid)}"
       aria-label="${esc(tr('light.brightness'))}"
       data-range-action="brightness" data-eid="${esc(eid)}" data-display-id="bri-val-${cssId(eid)}">
     <span aria-hidden="true" class="material-symbols-outlined text-base text-muted">brightness_high</span>
     <span class="text-xs text-muted tabular-nums min-w-[36px] text-right font-mono" id="bri-val-${cssId(eid)}">${pct}%</span>
     ${swatch}
   </div>`;
+}
+
+// 0 while off: HA drops brightness from an off light's attributes.
+function brightnessPct(state) {
+  if (state.state !== 'on') return 0;
+  const brightness = Number(state.attributes?.brightness) || 255;
+  return Math.round((brightness / 255) * 100);
 }
 
 function buildClimateControls(eid, state) {
@@ -1849,7 +1874,7 @@ function updateLightCard(eid, state, card) {
   // controls rather than rebuilding whenever the slider happens to be absent.
   const hasSlider = Boolean(card.querySelector('input[data-range-action="brightness"]'));
   const hasSwatch = Boolean(card.querySelector(`#swatch-${cssId(eid)}`));
-  const wantsSlider = on && entityOption(eid, 'show_brightness');
+  const wantsSlider = showsBrightness(eid, state);
   const wantsSwatch = on && showsColorControls(eid, state);
 
   if (hasSlider !== wantsSlider || hasSwatch !== wantsSwatch) {
@@ -1868,8 +1893,7 @@ function updateLightCard(eid, state, card) {
   }
 
   if (hasSlider) {
-    const brightness = state.attributes?.brightness ?? 255;
-    const pct = Math.round((brightness / 255) * 100);
+    const pct = brightnessPct(state);
     const slider = document.getElementById(`bri-${cssId(eid)}`);
     if (slider) { slider.value = pct; document.getElementById(`bri-val-${cssId(eid)}`).textContent = pct + '%'; }
   }

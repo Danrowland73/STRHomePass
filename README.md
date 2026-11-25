@@ -41,7 +41,7 @@ installs, just a link.
 - **Single-device lock** — optionally lock a link to the first browser that claims it; other devices are refused
 - **Proximity requirement** — mark individual entities as usable only from inside HA's `zone.home`
 - **Home-network-only controls** — mark individual entities as commandable only from your home network's IP ranges
-- **Per-entity overrides** — rename an entity for the guest, and opt lights into a brightness slider and colour controls
+- **Per-entity overrides** — rename an entity for the guest, give dimmable lights a brightness slider automatically, and opt lights into colour controls
 - **Sensor history** — opt a sensor in and the guest can tap it for a chart of its last 6 hours, 24 hours or 7 days, and lay the link's other shared sensors of the same unit over it to compare them
 - **Section headings** — rename the guest page's "Lights", "Switches" and other headings per link; guests can tap a heading to collapse its section unless the link locks it open
 - **Camera streaming** — read-only live views; no `camera.*` service is reachable
@@ -475,7 +475,7 @@ Open any selected entity in the picker to set:
 
 - **Display name** — up to 64 characters, shown to the guest instead of the Home
   Assistant name. Blank falls back to the HA name.
-- **Show brightness slider** (lights) — off by default; the guest gets on/off only.
+- **Show brightness slider** (lights) — on for any light Home Assistant reports as dimmable, whether it is on or off; untick it to give the guest on/off only. In the API, `"hide_brightness": true` in `options` does the same.
 - **Show colour controls** (lights) — off by default. The guest gets an RGB wheel,
   a warm–cool temperature slider, or both, depending on what Home Assistant
   reports the light supports.

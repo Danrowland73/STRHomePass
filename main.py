@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from app import branding
 from app import database as db
 from app import geoip
-from app.body_limit import LogoUploadLimit
+from app.body_limit import REQUEST_BODY_LIMIT, LogoUploadLimit, RequestBodyLimit
 from app import ha_client
 from app import local_network
 from app import i18n
@@ -186,6 +186,13 @@ app.add_middleware(
     LogoUploadLimit,
     limit=branding.LOGO_MAX_BYTES + branding.LOGO_UPLOAD_SLACK,
     message=f"The logo must be {branding.LOGO_MAX_BYTES // 1024} KB or smaller.",
+)
+# Everything else is capped too, for the same reason: a body is read before the
+# route, and so before a guest link or an admin session is checked.
+app.add_middleware(
+    RequestBodyLimit,
+    limit=REQUEST_BODY_LIMIT,
+    message="Request body too large.",
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(admin.router)

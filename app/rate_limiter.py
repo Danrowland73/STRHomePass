@@ -81,6 +81,24 @@ class RateLimiter:
                 state.record(now)
             return True
 
+    async def exceeded(self, token_id: str, limits: Sequence[tuple[float, int]]) -> bool:
+        """True if any of the given limits is already used up. Records nothing.
+
+        For budgets of failures: a caller checks this before acting, and spends
+        the budget with check_multi only when the attempt has failed.
+        """
+        now = time.monotonic()
+        async with self._lock:
+            states = self._windows.get(token_id, {})
+            for window, limit in limits:
+                state = states.get(window)
+                if state is None:
+                    continue
+                state.expire(now)
+                if state.count >= limit:
+                    return True
+            return False
+
     async def cleanup(self) -> None:
         """Remove entries for tokens with no recent requests (call periodically).
 

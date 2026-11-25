@@ -677,8 +677,13 @@ async def test_an_oversize_logo_upload_is_refused_before_it_is_read(client, path
 
 async def test_the_upload_cap_leaves_other_requests_alone(client, admin_session):
     big = b"x" * (LIMIT + 1)
-    # Not a logo upload: reaches the app, which answers for itself (here, no such link).
+    # Not a logo upload: the logo cap and its message do not apply. Bodies this
+    # large meet the general cap instead (app/body_limit.py RequestBodyLimit)...
     r = await client.post("/admin/tokens/abc/rotate-slug", content=big, cookies=admin_session)
+    assert r.status_code == 413
+    assert "logo" not in r.json()["detail"].lower()
+    # ...and an ordinary-sized one reaches the app, which answers for itself.
+    r = await client.post("/admin/tokens/abc/rotate-slug", content=b"x" * 1024, cookies=admin_session)
     assert r.status_code != 413
     r = await client.get("/admin/tokens/abc/logo", cookies=admin_session)
     assert r.status_code != 413

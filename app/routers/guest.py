@@ -133,6 +133,13 @@ PROXIMITY_FAILURE_LIMITS = ((60.0, 5), (3600.0, 30))
 # The per-token ceiling is deliberately well above what a guest fumbling their
 # PIN needs, and still caps a 4-digit space at ~2400 guesses/day — the same
 # DoS-vs-brute-force trade the command limiter already makes per token.
+# Wrong guesses at a link address, per client IP. A generated slug is 128 bits
+# and cannot be guessed, but an admin may choose a short custom one ("beach"),
+# and nothing else stops a client trying words one after another. A guest only
+# ever opens a link that exists, so this budget is spent only by guessing. Once
+# it is used up, every link lookup from that address is refused, including a
+# right guess, so the budget cannot be used to tell a hit from a miss.
+UNKNOWN_SLUG_LIMITS_PER_IP = ((60.0, 20), (3600.0, 100))
 PIN_ATTEMPT_LIMITS_PER_IP = ((60.0, 5), (3600.0, 20))
 PIN_ATTEMPT_LIMITS_PER_TOKEN = ((60.0, 15), (3600.0, 100))
 
@@ -633,6 +640,17 @@ def _refuse_pending(row, access: schedule.Access) -> None:
     )
 
 
+async def _lookup_slug(slug: str, request: Request):
+    """The token for a slug, or None, charged against the guessing budget."""
+    key = f"badslug:{_client_ip(request)}"
+    if await rate_limiter.exceeded(key, UNKNOWN_SLUG_LIMITS_PER_IP):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
+    row = await db.get_token_by_slug(slug)
+    if row is None:
+        await rate_limiter.check_multi(key, UNKNOWN_SLUG_LIMITS_PER_IP)
+    return row
+
+
 async def _validate_token(slug: str, request: Request, allow_pending: bool = False):
     """Load and validate a token by slug. Raises HTTP 410 on any issue.
 
@@ -675,7 +693,7 @@ async def _validate_token(slug: str, request: Request, allow_pending: bool = Fal
     page and earns the same cookie — so a link opened that way still meets the
     device lock and the schedule here, on every route.
     """
-    row = await db.get_token_by_slug(slug)
+    row = await _lookup_slug(slug, request)
     if not row:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Access unavailable")
 
@@ -966,7 +984,7 @@ async def _info_context(row, pending: bool) -> dict:
 
 @router.get("/{slug}", response_class=HTMLResponse)
 async def guest_pwa(background_tasks: BackgroundTasks, request: Request, slug: str = Path(max_length=64)):
-    row = await db.get_token_by_slug(slug)
+    row = await _lookup_slug(slug, request)
     if not row or _is_dead(row):
         ctx = base_context(request, i18n.GUEST)
         # "used" changes the wording and nothing else. It tells whoever holds
@@ -1153,7 +1171,7 @@ async def guest_bind(request: Request, slug: str = Path(max_length=64)):
     afterwards is served to their device and no other. The claim itself reveals
     nothing, so there is no reason to make them come back to do it.
     """
-    row = await db.get_token_by_slug(slug)
+    row = await _lookup_slug(slug, request)
     # _is_dead, not just revoked/expired: a use-limited link that has spent its
     # last use is as dead as an expired one, and must not be claimable.
     if not row or _is_dead(row):
@@ -1224,7 +1242,7 @@ async def guest_pin_submit(
     POST rather than a query parameter so the PIN never reaches browser history,
     a Referer header, or the reverse proxy's access log.
     """
-    row = await db.get_token_by_slug(slug)
+    row = await _lookup_slug(slug, request)
     if not row or _is_dead(row):
         ctx = base_context(request, i18n.GUEST)
         ctx.update({"slug": slug, "contact_message": settings.contact_message})
@@ -1303,7 +1321,7 @@ async def _manifest_identity(request: Request, slug: str) -> tuple[str, str, str
     answer cannot be used to tell them apart or to read a link's title.
     """
     name, bg, primary = settings.app_name, settings.brand_bg, settings.brand_primary
-    row = await db.get_token_by_slug(slug)
+    row = await _lookup_slug(slug, request)
     if not row or _is_dead(row):
         return name, bg, primary
     try:
@@ -1328,7 +1346,7 @@ async def guest_logo(request: Request, slug: str = Path(max_length=64)):
     unknown slug or a link with no logo is a plain 404. The URL carries ?v=<hash>
     so a replaced logo is fetched fresh while an unchanged one is cached.
     """
-    row = await db.get_token_by_slug(slug)
+    row = await _lookup_slug(slug, request)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     try:

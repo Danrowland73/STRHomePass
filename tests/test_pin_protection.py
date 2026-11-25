@@ -9,6 +9,8 @@ must not reach state, the SSE stream, a command, or either camera endpoint.
 import time
 from types import SimpleNamespace
 
+from starlette.datastructures import Headers
+
 import pytest
 import pytest_asyncio
 
@@ -114,7 +116,7 @@ async def test_sse_gate_matches_the_other_endpoints(test_db, open_token, pin_tok
 
     from app.routers.guest import _validate_token
 
-    stub = SimpleNamespace(cookies={})
+    stub = SimpleNamespace(headers=Headers(), cookies={}, client=SimpleNamespace(host="1.2.3.4"))
     assert await _validate_token("open-token", stub)
 
     with pytest.raises(HTTPException) as exc:
@@ -125,7 +127,10 @@ async def test_sse_gate_matches_the_other_endpoints(test_db, open_token, pin_tok
         pin_token["id"], (await db.get_token_by_id(pin_token["id"]))["pin_hash"],
         pin_token["expires_at"],
     )
-    unlocked = SimpleNamespace(cookies={guest_pin.SESSION_COOKIE: value})
+    unlocked = SimpleNamespace(
+        headers=Headers(), cookies={guest_pin.SESSION_COOKIE: value},
+        client=SimpleNamespace(host="1.2.3.4"),
+    )
     assert await _validate_token("pin-token", unlocked)
 
 

@@ -24,8 +24,11 @@ class LogoUploadLimit:
         self.limit = limit
         self.message = message
 
+    def applies(self, scope: Scope) -> bool:
+        return is_logo_upload(scope)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not is_logo_upload(scope):
+        if scope["type"] != "http" or not self.applies(scope):
             await self.app(scope, receive, send)
             return
 
@@ -68,3 +71,19 @@ class LogoUploadLimit:
     async def _refuse(self, scope: Scope, receive: Receive, send: Send) -> None:
         response = JSONResponse({"detail": self.message}, status_code=413, headers={"Connection": "close"})
         await response(scope, receive, send)
+
+
+# Every other request body: guest commands, PIN and claim forms, admin JSON.
+# None of them legitimately comes near this (a link with 2,000 entities is about
+# 100 KB). Without a cap, FastAPI reads a JSON or form body in full before the
+# route runs, so anyone could post an arbitrarily large body to a made-up guest
+# link and have it held in memory before the link was even looked up.
+REQUEST_BODY_LIMIT = 256 * 1024
+
+
+class RequestBodyLimit(LogoUploadLimit):
+    """The same cut-off as LogoUploadLimit, for every request that is not a logo
+    upload (those keep their own, larger, limit)."""
+
+    def applies(self, scope: Scope) -> bool:
+        return not is_logo_upload(scope)

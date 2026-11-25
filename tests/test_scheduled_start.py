@@ -20,6 +20,8 @@ import asyncio
 import time
 from types import SimpleNamespace
 
+from starlette.datastructures import Headers
+
 import pytest
 import pytest_asyncio
 
@@ -438,7 +440,7 @@ async def test_only_the_stream_opts_out_of_the_gate(test_db, pending_token):
     from fastapi import HTTPException
     from app.routers.guest import _validate_token
 
-    request = SimpleNamespace(headers={}, cookies={}, client=SimpleNamespace(host="1.2.3.4"))
+    request = SimpleNamespace(headers=Headers(), cookies={}, client=SimpleNamespace(host="1.2.3.4"))
 
     row = await _validate_token(pending_token["slug"], request, allow_pending=True)
     assert row["id"] == pending_token["id"]

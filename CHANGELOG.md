@@ -9,6 +9,16 @@ HomePass is a fork of [Rohithkadaveru/ha-pass](https://github.com/Rohithkadaveru
 unmaintained upstream since April 2026. Releases up to and including 0.2.4 are
 upstream's; 0.3.0 is the first release from this fork.
 
+## [1.6.5] - 2026-11-24
+
+### Security
+
+Hardening for guest links that are reachable from the internet (for example through a Cloudflare Tunnel).
+
+- **Wrong guesses at a link address are now rate-limited.** Generated link addresses are 128-bit random and cannot be guessed, but a custom one (such as `beach`) could be found by trying words, because unknown addresses were not limited. Each client IP may now miss 20 times a minute and 100 times an hour. After that, every link lookup from that address is refused with 429, a right guess included, so a guesser cannot tell a hit from a miss. Guests opening their own link never spend this budget.
+- **Every request body is now size-limited** (256 KB, logo uploads keep their own limit). A request body is read before the link or the admin session is checked, so before this anyone could post an arbitrarily large body to a made-up guest link and have it held in memory.
+- **Dependencies updated for published vulnerabilities:** `python-multipart` 0.0.22 → 0.0.34 (five advisories; it parses the guest PIN form) and `pydantic-settings` 2.13.1 → 2.14.2 (one advisory). `pip-audit` now reports no known vulnerabilities.
+
 ## [1.6.4] - 2026-11-24
 
 ### Security

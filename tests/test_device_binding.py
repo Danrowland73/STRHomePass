@@ -15,6 +15,8 @@ import asyncio
 import time
 from types import SimpleNamespace
 
+from starlette.datastructures import Headers
+
 import httpx
 import pytest
 import pytest_asyncio
@@ -396,7 +398,7 @@ async def test_stream_gate_matches_the_other_endpoints(test_db, bound_token):
     from fastapi import HTTPException
     from app.routers.guest import _validate_token
 
-    stranger = SimpleNamespace(headers={}, cookies={}, client=SimpleNamespace(host="1.2.3.4"))
+    stranger = SimpleNamespace(headers=Headers(), cookies={}, client=SimpleNamespace(host="1.2.3.4"))
     with pytest.raises(HTTPException) as exc:
         await _validate_token("bound", stranger, allow_pending=True)
     assert exc.value.status_code == 403
@@ -404,7 +406,7 @@ async def test_stream_gate_matches_the_other_endpoints(test_db, bound_token):
     secret = device_binding.new_secret()
     assert await db.claim_device_binding(bound_token["id"], device_binding.hash_secret(secret))
     owner = SimpleNamespace(
-        headers={}, cookies={device_binding.COOKIE: secret},
+        headers=Headers(), cookies={device_binding.COOKIE: secret},
         client=SimpleNamespace(host="1.2.3.4"),
     )
     assert await _validate_token("bound", owner, allow_pending=True)

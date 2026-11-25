@@ -1,6 +1,8 @@
-# HomePass
+# STRHomePass
 
-Shareable guest links for controlling Home Assistant devices.
+Shareable guest links for controlling Home Assistant devices. By Dan Rowland.
+
+Based on [HomePass](https://github.com/ljmerza/homepass) by Leonardo Merza.
 
 ## What it does
 

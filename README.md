@@ -1,4 +1,6 @@
-# HomePass
+# STRHomePass
+
+By Dan Rowland.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -9,9 +11,12 @@ entities — lights, locks, thermostats, fans, and more. Guests get a
 mobile-friendly PWA with real-time state updates. No HA accounts needed, no app
 installs, just a link.
 
-> HomePass is a fork of [Rohithkadaveru/ha-pass](https://github.com/Rohithkadaveru/ha-pass),
-> which has been unmaintained since April 2026. Original work is MIT-licensed and
-> copyright Rohith Kadaveru; see [LICENSE](LICENSE).
+> STRHomePass is based on [HomePass](https://github.com/ljmerza/homepass) by
+> Leonardo Merza. It adds grouping by Home Assistant area and iOS and Android
+> page styles. HomePass is itself a fork of
+> [Rohithkadaveru/ha-pass](https://github.com/Rohithkadaveru/ha-pass), which has
+> been unmaintained since April 2026. Original work is MIT-licensed and copyright
+> Rohith Kadaveru; see [LICENSE](LICENSE).
 
 ## Screenshots
 

@@ -9,6 +9,12 @@ HomePass is a fork of [Rohithkadaveru/ha-pass](https://github.com/Rohithkadaveru
 unmaintained upstream since April 2026. Releases up to and including 0.2.4 are
 upstream's; 0.3.0 is the first release from this fork.
 
+## [1.6.1] - 2026-11-24
+
+### Fixed
+
+- **Guest links and QR codes now include the port when the Guest URL has none.** A Guest URL such as `http://myhouse.duckdns.org` produced links to port 80, where nothing listens. An `http://` Guest URL with no port and no path now gets the add-on's published **Network** port added (`:5880`, or the port you remapped it to). The dashboard warns if that port is disabled. `https://` addresses, addresses with a path (reverse proxies) and any port you type are used exactly as entered.
+
 ## [1.6.0] - 2026-11-24
 
 ### Added

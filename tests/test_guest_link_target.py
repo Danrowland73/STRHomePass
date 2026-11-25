@@ -232,3 +232,49 @@ async def test_direct_port_dashboard_does_not_ask_supervisor(client, admin_sessi
         resp = await client.get("/admin/dashboard", cookies=admin_session)
     assert resp.status_code == 200
     assert fake.calls == []
+
+
+# ---------------------------------------------------------------------------
+# A Guest URL without a port
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("url, expected", [
+    # Direct access named by host alone: the add-on's port is added.
+    ("http://172.18.0.91", "http://172.18.0.91:8443"),
+    ("http://myhouse.duckdns.org", "http://myhouse.duckdns.org:8443"),
+    ("http://[fd00::5]", "http://[fd00::5]:8443"),
+    # A port the admin typed is kept, port 80 included.
+    ("http://myhouse.duckdns.org:5880", "http://myhouse.duckdns.org:5880"),
+    ("http://myhouse.duckdns.org:80", "http://myhouse.duckdns.org:80"),
+    # https or a path means a reverse proxy in front: left alone.
+    ("https://guests.example.com", "https://guests.example.com"),
+    ("http://example.com/homepass", "http://example.com/homepass"),
+    ("", ""),
+])
+def test_guest_url_with_port(url, expected):
+    assert app.ingress.guest_url_with_port(url, 8443) == expected
+
+
+@pytest.mark.parametrize("headers, session", [({"X-Ingress-Path": INGRESS_PREFIX}, False), ({}, True)])
+async def test_a_portless_guest_url_gets_the_published_port(
+    client, test_db, admin_session, headers, session,
+):
+    """The QR code, Copy and links without PIN all build on GUEST_URL."""
+    fake = _supervisor(self_info=_self_info({"5880/tcp": 8443}), info=_info("cabin"))
+    with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"), \
+         patch("app.ingress.httpx.AsyncClient", fake), \
+         patch.object(settings, "guest_url", "http://myhouse.duckdns.org"):
+        resp = await client.get("/admin/dashboard", headers=headers,
+                                cookies=admin_session if session else None)
+    assert resp.status_code == 200
+    assert 'const GUEST_URL = "http://myhouse.duckdns.org:8443";' in resp.text
+    assert 'const DIRECT_GUEST_BASE = "";' in resp.text
+
+
+async def test_a_portless_guest_url_warns_when_the_port_is_disabled(client, test_db):
+    fake = _supervisor(self_info=_self_info({"5880/tcp": None}))
+    with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"), \
+         patch("app.ingress.httpx.AsyncClient", fake), \
+         patch.object(settings, "guest_url", "http://myhouse.duckdns.org"):
+        resp = await client.get("/admin/dashboard", headers={"X-Ingress-Path": INGRESS_PREFIX})
+    assert 'id="guest-port-warning"' in resp.text

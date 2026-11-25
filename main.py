@@ -23,7 +23,9 @@ from app import settings_store
 from app.api_auth import api_enabled
 from app.config import settings
 from app.context import base_context
-from app.ingress import get_guest_link_target, get_ingress_path
+from app.ingress import (
+    get_guest_link_target, get_ingress_path, guest_url_needs_port, guest_url_with_port,
+)
 from app.models import NEVER_EXPIRES_SECONDS
 from app.rate_limiter import rate_limiter
 from app.routers import admin, guest, public_api
@@ -208,18 +210,28 @@ async def admin_dashboard_page(request: Request):
     # Only the sidebar needs the Supervisor lookup: there the admin is on HA's
     # origin and guest links have to point at the add-on's published port.
     # Direct-port admins link to their own origin, and a Guest URL beats both.
-    target = await get_guest_link_target() if is_ingress and not settings.guest_url else None
+    # A Guest URL that names the host but no port (http://myhouse.example) gets
+    # the add-on's published port added, or every link and QR code would point
+    # at port 80; see guest_url_needs_port.
+    needs_port = guest_url_needs_port(settings.guest_url)
+    target = (
+        await get_guest_link_target()
+        if needs_port or (is_ingress and not settings.guest_url) else None
+    )
+    guest_url = (
+        guest_url_with_port(settings.guest_url, target.port) if needs_port else settings.guest_url
+    )
     ctx.update({
         "never_expires": NEVER_EXPIRES_SECONDS,
         "is_ingress": is_ingress,
-        "guest_url": settings.guest_url,
+        "guest_url": guest_url,
         # The "home network only" toggle is offered only when there is a home
         # network to check against; the ranges are shown beside it so the admin
         # can see what the flag will actually compare with.
         "local_networks": [str(n) for n in local_network.networks()],
         "geoip_available": geoip.available(),
         "api_enabled": api_enabled(),
-        "direct_guest_base": target.base_url if target else "",
+        "direct_guest_base": target.base_url if target and not settings.guest_url else "",
         "guest_port_unpublished": bool(target and not target.published),
     })
     return _templates.TemplateResponse(request, "admin_dashboard.html", ctx)

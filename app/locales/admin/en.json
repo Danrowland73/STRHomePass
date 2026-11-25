@@ -350,7 +350,7 @@
   "settings.welcome_text": "Welcome text",
   "settings.welcome_text_hint": "Shown at the top of every guest page. Web links, email addresses and phone numbers become tappable. Simple formatting tags work: b, i, u, s, small, mark, br, h1 to h6, ul, ol, li, and font with a color. Any other tag is shown as typed. Leave empty to show nothing.",
   "settings.guest_url": "Guest URL",
-  "settings.guest_url_hint": "External base address for guest links. Leave empty to use the local address.",
+  "settings.guest_url_hint": "External base address for guest links. Leave empty to use the local address. An http:// address without a port gets the app's port added (e.g. :5880). Use https:// or a path for a reverse proxy.",
   "settings.brand_primary": "Primary color",
   "settings.brand_primary_hint": "Buttons and highlights.",
   "settings.brand_bg": "Background color",

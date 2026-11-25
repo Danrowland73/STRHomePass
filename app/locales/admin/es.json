@@ -350,7 +350,7 @@
   "settings.welcome_text": "Texto de bienvenida",
   "settings.welcome_text_hint": "Se muestra en la parte superior de todas las páginas de invitado. Los enlaces web, las direcciones de correo electrónico y los números de teléfono se pueden tocar. Se admiten etiquetas de formato sencillas: b, i, u, s, small, mark, br, h1 a h6, ul, ol, li y font con un color. Cualquier otra etiqueta se muestra tal como se escribe. Déjalo vacío para no mostrar nada.",
   "settings.guest_url": "URL de invitado",
-  "settings.guest_url_hint": "Dirección base externa para los enlaces de invitado. Déjala vacía para usar la dirección local.",
+  "settings.guest_url_hint": "Dirección base externa para los enlaces de invitado. Déjala vacía para usar la dirección local. A una dirección http:// sin puerto se le añade el puerto de la aplicación (p. ej. :5880). Usa https:// o una ruta para un proxy inverso.",
   "settings.brand_primary": "Color principal",
   "settings.brand_primary_hint": "Botones y elementos destacados.",
   "settings.brand_bg": "Color de fondo",

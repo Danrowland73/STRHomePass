@@ -8,6 +8,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import Request
@@ -157,3 +158,26 @@ async def get_guest_link_target() -> GuestLinkTarget:
     _guest_link_cache = GuestLinkTarget(host, port, published)
     _guest_link_cache_expires = now + (GUEST_LINK_CACHE_TTL if ok else GUEST_LINK_FAILURE_TTL)
     return _guest_link_cache
+
+
+def guest_url_needs_port(guest_url: str) -> bool:
+    """Whether a Guest URL reaches the add-on directly but names no port.
+
+    The add-on serves plain HTTP on its own port and has no TLS, so an http://
+    base with no port and no path can only mean "this host, the add-on's
+    port": left as it is, every link and QR code would point at port 80, where
+    nothing listens. An https:// base, or one with a path, is a reverse proxy,
+    and a port the admin typed (http://host:80 included) is always kept.
+    """
+    if not guest_url:
+        return False
+    parts = urlsplit(guest_url)
+    return parts.scheme == "http" and parts.port is None and parts.path in ("", "/")
+
+
+def guest_url_with_port(guest_url: str, port: int) -> str:
+    """The Guest URL with the add-on's port added when it needs one."""
+    if not guest_url_needs_port(guest_url):
+        return guest_url
+    parts = urlsplit(guest_url)
+    return f"http://{parts.netloc}:{port}"

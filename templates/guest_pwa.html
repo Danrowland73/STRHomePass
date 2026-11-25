@@ -52,6 +52,10 @@
     content: ''; position: absolute; inset: 0; border-radius: 50%;
     background: currentColor; animation: pingDot 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
+  /* Header text sized by fitHeaderText(): one line, measured, then wrapped
+     only if even the smallest size cannot hold it. */
+  .header-fit { display: block; width: 100%; white-space: nowrap; overflow: hidden; }
+  .header-fit.header-fit-wrap { white-space: normal; overflow-wrap: anywhere; }
   .toggle-track {
     position: relative; width: 51px; height: 31px; border-radius: 16px;
     background: var(--hex-muted-ui); cursor: pointer; transition: background .25s ease; flex-shrink: 0;
@@ -193,8 +197,10 @@
 
 <!-- Header -->
 <header class="sticky top-0 z-20 bg-surface-light/95 dark:bg-surface-dark/95 border-b border-border-light dark:border-border-dark backdrop-blur-lg">
-  <div class="px-4 py-3">
-    <div class="flex items-center justify-between">
+  {# The same centred column as the devices, so on a tablet the name sits over
+     them rather than at the screen's far edge. #}
+  <div class="max-w-xl mx-auto px-4 py-3">
+    <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3 flex-1 min-w-0">
         {# A link's own logo, title and eyebrow replace the icon, label and app name
            (app/branding.py page_context). Each falls back to the usual part when
@@ -208,33 +214,21 @@
           <span aria-hidden="true" class="material-symbols-outlined text-accent text-xl">person</span>
         </div>
         {% endif %}
-        <div class="min-w-0">
+        <div class="flex-1 min-w-0">
           {% if branding and branding.title %}
           <div style="font-size: {{ branding.title_size }}px" class="font-serif leading-tight break-words">{{ branding.title }}</div>
           {% else %}
-          <div class="text-sm font-serif truncate">{{ label }}</div>
+          {# Sized to the width it has, up to a large cap; see fitHeaderText. #}
+          <div data-fit data-fit-max="40" data-fit-min="18" class="header-fit font-serif leading-tight">{{ label }}</div>
           {% endif %}
           {% if branding and branding.eyebrow %}
           <div style="font-size: {{ branding.eyebrow_size }}px" class="text-accent font-display font-medium tracking-wide break-words">{{ branding.eyebrow }}</div>
           {% else %}
-          <div class="text-[10px] text-muted font-mono uppercase tracking-widest">{{ app_name }}</div>
+          <div data-fit data-fit-max="18" data-fit-min="11" class="header-fit text-muted font-mono uppercase tracking-widest leading-snug">{{ app_name }}</div>
           {% endif %}
         </div>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
-        <!-- Theme Toggle -->
-        <div class="theme-toggle relative flex bg-soot/[0.04] dark:bg-white/[0.06] rounded-full p-[2px]">
-          <div class="theme-slider absolute top-[2px] h-[calc(100%-4px)] rounded-full bg-white dark:bg-white/15 shadow-sm transition-all duration-200 ease-out"></div>
-          <button data-theme="system" data-action="set-theme" aria-label="{{ t('page.theme.system') }}" class="theme-btn relative z-10 w-6 h-6 flex items-center justify-center rounded-full">
-            <span aria-hidden="true" class="material-symbols-outlined text-[14px]">brightness_auto</span>
-          </button>
-          <button data-theme="light" data-action="set-theme" aria-label="{{ t('page.theme.light') }}" class="theme-btn relative z-10 w-6 h-6 flex items-center justify-center rounded-full">
-            <span aria-hidden="true" class="material-symbols-outlined text-[14px]">light_mode</span>
-          </button>
-          <button data-theme="dark" data-action="set-theme" aria-label="{{ t('page.theme.dark') }}" class="theme-btn relative z-10 w-6 h-6 flex items-center justify-center rounded-full">
-            <span aria-hidden="true" class="material-symbols-outlined text-[14px]">dark_mode</span>
-          </button>
-        </div>
         {# Nothing is connected while the link is pending — its stream carries
            lifecycle events only — so the badge is not rendered rather than
            left showing "Live" over a preview. #}
@@ -248,6 +242,29 @@
     </div>
   </div>
 </header>
+<script nonce="{{ csp_nonce }}">
+// Fit the header's link name and app name to the width they have: as large as
+// fills it on a phone, but never past data-fit-max, so a tablet shows a large,
+// readable name rather than one the size of the screen. A name too long to fit
+// even at data-fit-min wraps instead of shrinking further. Text width scales
+// with font size, so one measurement at the cap gives the size that fits.
+function fitHeaderText() {
+  document.querySelectorAll('[data-fit]').forEach(el => {
+    const max = Number(el.dataset.fitMax), min = Number(el.dataset.fitMin);
+    el.classList.remove('header-fit-wrap');
+    el.style.fontSize = max + 'px';
+    const available = el.clientWidth, natural = el.scrollWidth;
+    if (!available || !natural) return;
+    const size = Math.max(min, Math.min(max, Math.floor(max * available / natural * 100) / 100));
+    el.style.fontSize = size + 'px';
+    if (el.scrollWidth > el.clientWidth + 1) el.classList.add('header-fit-wrap');
+  });
+}
+fitHeaderText();
+window.addEventListener('resize', fitHeaderText);
+// The serif arrives after first paint and is wider than the fallback.
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHeaderText);
+</script>
 
 {# The global welcome text and, unless it is flagged for the footer, this
    link's info text. Built and sanitised by app/richtext.py; the server leaves it
@@ -353,7 +370,25 @@ applyStoredInfoState();
 </div>
 
 <!-- Cards container -->
-<main id="cards-container" class="max-w-xl mx-auto px-4 pt-3 pb-8">
+{# The theme switch and, when the link offers it, the Display by switch, in one
+   row above the devices, leaving the header's width to the link's name. The
+   Display by switch is drawn into its slot by renderAll(). #}
+<div id="page-toolbar" class="max-w-xl mx-auto px-4 pt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+  <div class="theme-toggle relative flex bg-soot/[0.04] dark:bg-white/[0.06] rounded-full p-[2px]">
+    <div class="theme-slider absolute top-[2px] h-[calc(100%-4px)] rounded-full bg-white dark:bg-white/15 shadow-sm transition-all duration-200 ease-out"></div>
+    <button data-theme="system" data-action="set-theme" aria-label="{{ t('page.theme.system') }}" class="theme-btn relative z-10 w-8 h-8 flex items-center justify-center rounded-full">
+      <span aria-hidden="true" class="material-symbols-outlined text-[16px]">brightness_auto</span>
+    </button>
+    <button data-theme="light" data-action="set-theme" aria-label="{{ t('page.theme.light') }}" class="theme-btn relative z-10 w-8 h-8 flex items-center justify-center rounded-full">
+      <span aria-hidden="true" class="material-symbols-outlined text-[16px]">light_mode</span>
+    </button>
+    <button data-theme="dark" data-action="set-theme" aria-label="{{ t('page.theme.dark') }}" class="theme-btn relative z-10 w-8 h-8 flex items-center justify-center rounded-full">
+      <span aria-hidden="true" class="material-symbols-outlined text-[16px]">dark_mode</span>
+    </button>
+  </div>
+  <div id="layout-switch-slot" class="ml-auto"></div>
+</div>
+<main id="cards-container" class="max-w-xl mx-auto px-4 pt-1 pb-8">
   <div class="flex flex-col items-center justify-center py-16 text-muted">
     <div class="w-6 h-6 border-2 border-border-light dark:border-border-dark border-t-accent rounded-full spinner mb-3"></div>
     <span class="text-sm">{{ t('page.devices.loading') }}</span>
@@ -857,13 +892,17 @@ function showExpired(reason = null) {
 function renderAll() {
   const container = document.getElementById('cards-container');
   if (!entityOrder.length) {
+    const slot = document.getElementById('layout-switch-slot');
+    if (slot) slot.innerHTML = '';
     container.innerHTML = `<div class="text-center py-16 text-sm text-muted">${esc(tr('devices.none'))}</div>`;
     return;
   }
 
   const sections = effectiveGroupBy() === 'area' ? areaSections() : typeSections();
 
-  let html = layoutSwitchHtml();
+  const slot = document.getElementById('layout-switch-slot');
+  if (slot) slot.innerHTML = layoutSwitchHtml();
+  let html = '';
   for (const { key, label, entities, locked } of sections) {
     const cards = entities.map(eid => buildCard(eid, states[eid])).join('');
     // Quieter than the cards under it: a heading that competes with the
@@ -987,7 +1026,7 @@ function layoutSwitchHtml() {
   };
   // The visible label also names the group for a screen reader, so both
   // hear and see the same words.
-  return `<div class="flex justify-end items-center gap-2 pt-2">`
+  return `<div class="flex justify-end items-center gap-2">`
     + `<span id="layout-switch-label" class="text-xs font-semibold text-muted">${esc(tr('devices.display_by'))}</span>`
     + `<div class="layout-switch inline-flex gap-1 p-1 rounded-xl bg-soot/5 dark:bg-white/5" role="group" aria-labelledby="layout-switch-label">`
     + option('type', 'category', tr('devices.by_type'))

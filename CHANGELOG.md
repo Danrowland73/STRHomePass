@@ -14,6 +14,8 @@ upstream's; 0.3.0 is the first release from this fork.
 ### Changed
 
 - **Dimmable lights get a brightness slider automatically.** The guest page now works out whether each light dims, from Home Assistant's `supported_color_modes` or, for older integrations, its supported features. Every dimmable light gets a slider without any setup. The slider shows whether the light is on or off: dragging an off light's slider turns it on at that level, and 0% turns it off. Lights that are on/off only, and unavailable ones, stay on/off. **Show brightness slider** in a light's options is now ticked by default. Untick it to keep a dimmable light on/off for that link; this is stored as the new `hide_brightness` option. The old `show_brightness` option is still accepted and does nothing. Existing links pick up sliders on their dimmable lights. Colour controls stay opt-in.
+- **A bigger, easier-to-read guest page header.** The link name and app name now size themselves to the width of the device, up to a large cap (40px for the name, 18px for the app name). On a phone they fill the width; on a tablet they stop at a comfortable large size instead of growing to fit the screen. A name too long for one line, even at the smallest size (18px), wraps onto two lines instead of shrinking further. The header is centred on the same column as the devices, so on a tablet it sits over them. Links with custom Branding keep the title size set by its slider.
+- **The Auto / Light / Dark switch moved** out of the header into a row just above the devices, next to **Display by**, leaving the header's width for the link name. Its buttons are larger and easier to tap.
 
 ## [1.6.1] - 2026-11-24
 

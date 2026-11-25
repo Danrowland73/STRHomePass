@@ -27,6 +27,10 @@ globalThis.localStorage = window.localStorage = {
 """
 
 AREA_SEED = GUEST_SEED + STORE + """
+// The Display by switch renders into its toolbar slot above the cards; page()
+// is both, as a guest sees them.
+const slot = () => document.getElementById('layout-switch-slot').innerHTML;
+const page = () => slot() + html();
 groupHeadings = { light: { name: 'Lamps', locked: true } };
 const layout = (over = {}) => readLayout({
   group_by: 'area', guest_can_regroup: true,
@@ -52,7 +56,7 @@ async def test_area_layout_draws_one_section_per_area(client, sample_token, mock
     out = await _guest(client, AREA_SEED + """
     layout();
     renderAll();
-    console.log(JSON.stringify(html()));
+    console.log(JSON.stringify(page()));
     """)
     # Alphabetical, with the entity that has no area last. Renamed and locked
     # type headings do not apply to areas.
@@ -62,16 +66,33 @@ async def test_area_layout_draws_one_section_per_area(client, sample_token, mock
     kitchen = out.split('id="group-area-kitchen"')[1]
     assert kitchen.index("card-light-a") < kitchen.index("card-switch-b")
     assert _switch(out) == {"type": "false", "area": "true"}
+    # The switch sits in the toolbar beside the theme switch, not among the cards.
+    assert out.index('id="layout-switch-label"') < out.index('data-group=')
     # A visible label, which also names the switch for screen readers.
     assert '<span id="layout-switch-label" class="text-xs font-semibold text-muted">Display by:</span>' in out
     assert 'role="group" aria-labelledby="layout-switch-label"' in out
+
+
+async def test_the_switch_is_drawn_in_the_toolbar_not_the_cards(client, sample_token, mock_ha_client):
+    out = await _guest(client, AREA_SEED + """
+    layout();
+    renderAll();
+    const withAreas = { slot: slot(), cards: html() };
+    // With nothing on the link the slot is emptied too.
+    entityOrder = [];
+    renderAll();
+    console.log(JSON.stringify({ ...withAreas, emptied: slot() }));
+    """)
+    assert 'data-action="group-by"' in out["slot"]
+    assert 'data-action="group-by"' not in out["cards"]
+    assert out["emptied"] == ""
 
 
 async def test_type_layout_is_unchanged(client, sample_token, mock_ha_client):
     out = await _guest(client, AREA_SEED + """
     layout({ group_by: 'type' });
     renderAll();
-    console.log(JSON.stringify(html()));
+    console.log(JSON.stringify(page()));
     """)
     assert _headings(out) == ["Lamps", "Switches", "Locks"]
     assert _switch(out) == {"type": "true", "area": "false"}
@@ -82,11 +103,11 @@ async def test_guest_pick_is_remembered_per_link(client, sample_token, mock_ha_c
     layout();
     renderAll();
     pick('type');
-    const after = html();
+    const after = page();
     // A refetch keeps the guest's pick over the link's default.
     layout();
     renderAll();
-    console.log(JSON.stringify({ after, again: html(), store }));
+    console.log(JSON.stringify({ after, again: page(), store }));
     """)
     assert _headings(out["after"]) == ["Lamps", "Switches", "Locks"]
     assert _headings(out["again"]) == ["Lamps", "Switches", "Locks"]
@@ -99,7 +120,7 @@ async def test_no_switch_when_the_guest_may_not_regroup(client, sample_token, mo
     storageLog.length = 0;
     layout({ guest_can_regroup: false });
     renderAll();
-    console.log(JSON.stringify({ html: html(), storageLog }));
+    console.log(JSON.stringify({ html: page(), storageLog }));
     """)
     # The admin's layout wins over a pick made while switching was allowed,
     # and storage is not even read.
@@ -113,10 +134,10 @@ async def test_no_areas_means_type_layout_and_no_switch(client, sample_token, mo
     storageLog.length = 0;
     layout({ area_names: null, entity_areas: {} });
     renderAll();
-    const unreadable = html();
+    const unreadable = page();
     layout({ area_names: {}, entity_areas: {} });
     renderAll();
-    console.log(JSON.stringify({ unreadable, empty: html(), storageLog }));
+    console.log(JSON.stringify({ unreadable, empty: page(), storageLog }));
     """)
     for html in (out["unreadable"], out["empty"]):
         assert _headings(html) == ["Lamps", "Switches", "Locks"]

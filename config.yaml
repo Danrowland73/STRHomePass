@@ -1,5 +1,5 @@
 name: STRHomePass
-version: "1.6.2"
+version: "1.6.3"
 slug: strhomepass
 description: Shareable guest links for controlling Home Assistant devices
 url: "https://github.com/Danrowland73/STRHomePass"

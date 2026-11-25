@@ -9,6 +9,12 @@ HomePass is a fork of [Rohithkadaveru/ha-pass](https://github.com/Rohithkadaveru
 unmaintained upstream since April 2026. Releases up to and including 0.2.4 are
 upstream's; 0.3.0 is the first release from this fork.
 
+## [1.6.3] - 2026-11-24
+
+### Added
+
+- **Apple Home-style dimmers in the iOS look.** In the iOS page style, dimmable lights now look like any other light tile, showing "On · 78%". Tapping the bulb icon turns the light on or off. Tapping anywhere else on the tile opens a full-screen dimmer with a tall vertical slider: drag up or down and the light follows as you drag, with 0% turning it off. The dimmer also has a power button, a color button (when color controls are allowed for that light) and **Done**, and closes on a tap outside or Escape. It works with a keyboard and screen readers (arrow keys 5%, Page Up/Down 10%, Home/End). Updates sent while dragging are spaced at least 350 ms apart, well within the link's rate limit, and the final position is always sent. The Standard and Android looks keep the inline slider.
+
 ## [1.6.2] - 2026-11-24
 
 ### Changed

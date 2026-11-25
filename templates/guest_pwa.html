@@ -52,6 +52,25 @@
     content: ''; position: absolute; inset: 0; border-radius: 50%;
     background: currentColor; animation: pingDot 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
+  /* The dimmer: a tall rounded track that fills from the bottom. */
+  .dimmer-track {
+    position: relative; width: 120px; height: min(340px, 50vh); border-radius: 34px;
+    overflow: hidden; background: rgba(255, 255, 255, .18); touch-action: none; cursor: ns-resize;
+  }
+  .dimmer-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: #fff; }
+  .dimmer-icon {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    font-size: 30px; color: rgba(0, 0, 0, .55); pointer-events: none;
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .dimmer-track[aria-valuenow="0"] .dimmer-icon { color: rgba(255, 255, 255, .7); }
+  .dimmer-btn {
+    min-width: 52px; height: 52px; padding: 0 16px; border-radius: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, .18); color: #fff; font-weight: 600;
+  }
+  .dimmer-btn.dimmer-on { background: #fff; color: #000; }
+  .dimmer-btn.hidden { display: none; }
   /* Header text sized by fitHeaderText(): one line, measured, then wrapped
      only if even the smallest size cannot hold it. */
   .header-fit { display: block; width: 100%; white-space: nowrap; overflow: hidden; }
@@ -498,9 +517,35 @@ applyStoredInfoState();
   </div>
 </div>
 
+{# The iOS look's dimmer, after the phone's own home app: tapping a dimmable
+   light's tile (anywhere but its bulb) opens this tall slider; dragging it
+   sets the brightness, 0% being off. Drawn by openDimmer(); the delegated
+   click handler closes it when the dim backdrop itself is tapped. #}
+<div class="fixed inset-0 z-40 hidden items-center justify-center bg-black/55 backdrop-blur-md" id="dimmer-backdrop" data-action="dimmer-close">
+  <div class="flex flex-col items-center gap-4 px-6 py-8" role="dialog" aria-modal="true" aria-labelledby="dimmer-title" data-action="dimmer-dialog">
+    <h3 id="dimmer-title" class="text-2xl font-semibold text-white text-center max-w-xs break-words"></h3>
+    <div id="dimmer-value" class="text-lg text-white/80 tabular-nums" aria-hidden="true"></div>
+    <div id="dimmer-track" class="dimmer-track" role="slider" tabindex="0"
+      aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="dimmer-title">
+      <div id="dimmer-fill" class="dimmer-fill"></div>
+      <span aria-hidden="true" class="dimmer-icon material-symbols-outlined">lightbulb</span>
+    </div>
+    <div class="flex items-center gap-4 mt-2">
+      <button type="button" data-action="dimmer-power" id="dimmer-power" class="dimmer-btn">
+        <span aria-hidden="true" class="material-symbols-outlined">power_settings_new</span>
+      </button>
+      <button type="button" data-action="dimmer-color" id="dimmer-color" class="dimmer-btn hidden" aria-label="{{ t('light.choose_colour') }}">
+        <span aria-hidden="true" class="material-symbols-outlined">palette</span>
+      </button>
+      <button type="button" data-action="dimmer-close" class="dimmer-btn dimmer-done">{{ t('sheet.done') }}</button>
+    </div>
+  </div>
+</div>
+
 <!-- Sensor history sheet. Its own dialog rather than the confirm sheet's: it
      holds a chart that outlives a single tap, and closing it must not run the
      confirm sheet's teardown of codes and colour widgets. -->
+
 <div class="fixed inset-0 z-40 hidden items-end justify-center bg-soot/40 dark:bg-black/50 backdrop-blur-sm" id="history-backdrop">
   <div class="sheet-animate bg-surface-light dark:bg-surface-dark rounded-t-2xl p-5 w-full max-w-lg" role="dialog" aria-modal="true" aria-labelledby="history-title" style="padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));">
     <div class="flex items-center justify-between gap-3 mb-3">
@@ -1069,9 +1114,12 @@ function buildCard(eid, state) {
   // reach still dims whole.
   const opacityClass = isDimmedState(domain, stateStr) ? 'opacity-60' : '';
 
+  // In the iOS look a dimmable light is a plain tile: its bulb toggles it and
+  // the rest of the tile opens the dimmer, so it carries no inline controls.
+  const dimmerTile = usesDimmerTile(eid, state);
   let controls = '';
   if (domain === 'camera') controls = buildCameraControls(eid, state);
-  else if (domain === 'light') controls = buildLightControls(eid, state);
+  else if (domain === 'light') controls = dimmerTile ? '' : buildLightControls(eid, state);
   else if (domain === 'switch' || domain === 'input_boolean' || domain === 'group') controls = '';
   else if (domain === 'climate') controls = buildClimateControls(eid, state);
   else if (domain === 'lock') controls = buildLockControls(eid, state);
@@ -1110,7 +1158,9 @@ function buildCard(eid, state) {
 
   // The whole tile is the hit target for anything with a toggle; domains with
   // their own controls (climate, lock, cover, media, camera) are left alone.
-  const cardTap = hasToggle
+  const cardTap = dimmerTile
+    ? `data-action="open-dimmer" data-eid="${esc(eid)}" role="button" tabindex="0" aria-haspopup="dialog" aria-label="${esc(name)}: ${esc(tr('light.brightness'))}" `
+    : hasToggle
     ? `data-action="card-toggle" data-eid="${esc(eid)}" data-domain="${domain}" role="button" tabindex="0" aria-label="${esc(tr('card.toggle', { name }))}" `
     : hasHistory
       ? `data-action="open-history" data-eid="${esc(eid)}" role="button" tabindex="0" aria-label="${esc(tr('history.open', { name }))}" `
@@ -1126,7 +1176,7 @@ function buildCard(eid, state) {
   const tile = controls.trim() === '' ? ' data-tile' : '';
   return `<div ${cardTap}class="ha-card bg-surface-light dark:bg-surface-dark rounded-2xl p-3 mb-2 shadow-card ${hasToggle || hasHistory ? 'cursor-pointer select-none' : ''} ${opacityClass}" id="card-${cssId(eid)}" data-domain="${domain}" data-active="${isActiveState(domain, stateStr)}"${tile}>
     <div class="ha-card-row flex items-center gap-3">
-      ${entityShapeHtml(eid, domain, state, icon)}
+      ${entityShapeHtml(eid, domain, state, icon, dimmerTile ? name : null)}
       <div class="ha-card-text flex-1 min-w-0">
         <div class="ha-card-name text-sm font-semibold leading-tight truncate${locationBadge ? ' flex items-center gap-1' : ''}">${esc(name)}${locationBadge}</div>
         <div class="ha-card-state text-xs text-muted leading-tight mt-0.5" id="state-${cssId(eid)}">${formatState(domain, stateStr, state)}</div>
@@ -1146,10 +1196,15 @@ function shapeStyles(color) {
   return { shape: `rgb(${r} ${g} ${b} / 0.2)`, icon: `rgb(${r} ${g} ${b})` };
 }
 
-function entityShapeHtml(eid, domain, state, icon) {
+// toggleName, when given, makes the shape the tile's on/off button (the iOS
+// look's dimmable lights, whose tile body opens the dimmer instead).
+function entityShapeHtml(eid, domain, state, icon, toggleName = null) {
   const color = entityColor(domain, state);
   const styles = shapeStyles(color);
-  return `<div class="entity-shape ${color.bg}" id="shape-${cssId(eid)}"${styles.shape ? ` style="background-color: ${styles.shape}"` : ''}>
+  const button = toggleName
+    ? ` data-action="shape-toggle" data-eid="${esc(eid)}" data-domain="${domain}" role="button" tabindex="0" aria-label="${esc(tr('card.toggle', { name: toggleName }))}"`
+    : '';
+  return `<div class="entity-shape ${color.bg}" id="shape-${cssId(eid)}"${button}${styles.shape ? ` style="background-color: ${styles.shape}"` : ''}>
         <span aria-hidden="true" class="material-symbols-outlined ${color.text}" id="icon-${cssId(eid)}"${styles.icon ? ` style="color: ${styles.icon}"` : ''}>${icon}</span>
       </div>`;
 }
@@ -1252,6 +1307,9 @@ function formatState(domain, stateStr, state) {
     if (stateStr === 'on') return esc(tr('state.active'));
     if (stateStr === 'off') return esc(tr('state.inactive'));
     return esc(rawState(stateStr));
+  }
+  if (domain === 'light' && stateStr === 'on' && state.entity_id && usesDimmerTile(state.entity_id, state)) {
+    return esc(tr('state.on_percent', { pct: brightnessPct(state) }));
   }
   if (domain === 'fan') {
     const pct = state.attributes?.percentage;
@@ -1501,6 +1559,113 @@ function brightnessPct(state) {
   const brightness = Number(state.attributes?.brightness) || 255;
   return Math.round((brightness / 255) * 100);
 }
+
+// ── Dimmer (iOS look) ────────────────────────────────────────────────
+// Dimmable lights as plain tiles, as the phone's own home app draws them. Only
+// the iOS look does this; every other look keeps the inline slider.
+const DIMMER_SKINS = ['ios'];
+const DIMMER_THROTTLE_MS = 350;   // live updates while dragging, well under the rate limit
+const DIMMER_ECHO_GRACE_MS = 1200; // ignore HA's echoes of our own drag for this long
+const dimmer = { eid: null, pct: 0, dragging: false, lastSent: 0, sentPct: null, timer: null, touchedAt: 0 };
+
+function usesDimmerTile(eid, state) {
+  return eid.startsWith('light.') && DIMMER_SKINS.includes(document.documentElement.dataset.skin)
+    && showsBrightness(eid, state);
+}
+
+function openDimmer(eid) {
+  const state = states[eid];
+  if (!state) return;
+  dimmer.eid = eid;
+  dimmer.dragging = false;
+  dimmer.sentPct = null;
+  dimmer.touchedAt = 0;
+  document.getElementById('dimmer-title').textContent = displayName(eid, state);
+  document.getElementById('dimmer-power').setAttribute('aria-label', tr('card.toggle', { name: displayName(eid, state) }));
+  document.getElementById('dimmer-color').classList.toggle('hidden', !showsColorControls(eid, state));
+  renderDimmer(brightnessPct(state), state.state === 'on');
+  const backdrop = document.getElementById('dimmer-backdrop');
+  backdrop.classList.remove('hidden');
+  backdrop.classList.add('flex');
+  const dialog = backdrop.querySelector('[role="dialog"]');
+  if (dialog) trapFocus(dialog);
+  document.getElementById('dimmer-track').focus();
+}
+
+function closeDimmer() {
+  if (!dimmer.eid) return;
+  flushDimmer();
+  const backdrop = document.getElementById('dimmer-backdrop');
+  const dialog = backdrop.querySelector('[role="dialog"]');
+  if (dialog) dialog.removeEventListener('keydown', _handleTrapKeydown);
+  backdrop.classList.remove('flex');
+  backdrop.classList.add('hidden');
+  dimmer.eid = null;
+  releaseFocus();
+}
+
+function renderDimmer(pct, on) {
+  dimmer.pct = pct;
+  document.getElementById('dimmer-fill').style.height = pct + '%';
+  document.getElementById('dimmer-value').textContent = pct + '%';
+  const track = document.getElementById('dimmer-track');
+  track.setAttribute('aria-valuenow', String(pct));
+  track.setAttribute('aria-valuetext', pct + '%');
+  document.getElementById('dimmer-power').classList.toggle('dimmer-on', on);
+}
+
+// HA's echo of the light. Skipped mid-drag and just after one, when the echo
+// is of a value the guest has already moved past.
+function syncDimmer(state) {
+  if (dimmer.dragging || Date.now() - dimmer.touchedAt < DIMMER_ECHO_GRACE_MS) return;
+  renderDimmer(brightnessPct(state), state.state === 'on');
+}
+
+// Live while dragging, throttled; the last value always goes out.
+function setDimmer(pct) {
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  dimmer.touchedAt = Date.now();
+  renderDimmer(pct, pct > 0);
+  clearTimeout(dimmer.timer);
+  const wait = DIMMER_THROTTLE_MS - (Date.now() - dimmer.lastSent);
+  if (wait <= 0) flushDimmer();
+  else dimmer.timer = setTimeout(flushDimmer, wait);
+}
+
+function flushDimmer() {
+  clearTimeout(dimmer.timer);
+  if (!dimmer.eid || dimmer.sentPct === dimmer.pct || dimmer.touchedAt === 0) return;
+  dimmer.sentPct = dimmer.pct;
+  dimmer.lastSent = Date.now();
+  sendBrightness(dimmer.eid, dimmer.pct);  // 0 turns the light off
+}
+
+function dimmerPctAt(clientY) {
+  const rect = document.getElementById('dimmer-track').getBoundingClientRect();
+  return ((rect.bottom - clientY) / rect.height) * 100;
+}
+
+(function wireDimmer() {
+  const track = document.getElementById('dimmer-track');
+  if (!track) return;
+  track.addEventListener('pointerdown', e => {
+    dimmer.dragging = true;
+    if (track.setPointerCapture) track.setPointerCapture(e.pointerId);
+    setDimmer(dimmerPctAt(e.clientY));
+  });
+  track.addEventListener('pointermove', e => { if (dimmer.dragging) setDimmer(dimmerPctAt(e.clientY)); });
+  const end = () => { if (!dimmer.dragging) return; dimmer.dragging = false; flushDimmer(); };
+  track.addEventListener('pointerup', end);
+  track.addEventListener('pointercancel', end);
+  const KEYS = { ArrowUp: 5, ArrowRight: 5, ArrowDown: -5, ArrowLeft: -5, PageUp: 10, PageDown: -10 };
+  track.addEventListener('keydown', e => {
+    if (e.key in KEYS) setDimmer(dimmer.pct + KEYS[e.key]);
+    else if (e.key === 'Home') setDimmer(0);
+    else if (e.key === 'End') setDimmer(100);
+    else return;
+    e.preventDefault();
+  });
+})();
 
 function buildClimateControls(eid, state) {
   const rawCurrent = state.attributes?.current_temperature;
@@ -1913,8 +2078,10 @@ function updateLightCard(eid, state, card) {
   // controls rather than rebuilding whenever the slider happens to be absent.
   const hasSlider = Boolean(card.querySelector('input[data-range-action="brightness"]'));
   const hasSwatch = Boolean(card.querySelector(`#swatch-${cssId(eid)}`));
-  const wantsSlider = showsBrightness(eid, state);
-  const wantsSwatch = on && showsColorControls(eid, state);
+  const dimmerTile = usesDimmerTile(eid, state);
+  const wantsSlider = !dimmerTile && showsBrightness(eid, state);
+  const wantsSwatch = !dimmerTile && on && showsColorControls(eid, state);
+  if (dimmer.eid === eid) syncDimmer(state);
 
   if (hasSlider !== wantsSlider || hasSwatch !== wantsSwatch) {
     const parent = card.parentElement;
@@ -2863,6 +3030,7 @@ window.addEventListener('resize', () => {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && historyEid) closeHistory();
+  if (e.key === 'Escape' && dimmer.eid) closeDimmer();
 });
 
 // ── Delegated Event Handlers ─────────────────────────────────────
@@ -2946,6 +3114,26 @@ document.addEventListener('click', e => {
     case 'group-toggle':
       toggleGroup(el);
       break;
+    case 'shape-toggle':
+      sendToggle(eid, el.dataset.domain);
+      break;
+    case 'open-dimmer':
+      openDimmer(eid);
+      break;
+    case 'dimmer-close':
+      closeDimmer();
+      break;
+    case 'dimmer-dialog':
+      break;  // a tap on the dialog's own background is not a tap on the backdrop
+    case 'dimmer-power':
+      if (dimmer.eid) { sendToggle(dimmer.eid, 'light'); dimmer.touchedAt = 0; }
+      break;
+    case 'dimmer-color': {
+      const target = dimmer.eid;
+      closeDimmer();
+      if (target) openColorSheet(target);
+      break;
+    }
     case 'group-by':
       setGroupBy(el.dataset.groupBy);
       break;

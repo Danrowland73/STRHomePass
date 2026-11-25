@@ -81,6 +81,7 @@ async def test_expired_page_assets_are_versioned(client, mock_ha_client, test_db
     _assert_all_versioned(resp.text)
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_ingress_prefix_and_version_ride_together(
     client, mock_ha_client, sample_token
 ):

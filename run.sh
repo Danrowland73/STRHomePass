@@ -42,4 +42,7 @@ else
     echo "[run.sh] Standalone mode — using environment variables"
 fi
 
-exec python -m uvicorn main:app --host 0.0.0.0 --port "${PORT:-5880}" --workers 1
+# --no-proxy-headers: request.client must stay the real TCP peer. The app reads
+# forwarded headers itself, only from TRUSTED_PROXIES (app/client_ip.py), and
+# trusts X-Ingress-Path only from the Supervisor's own address (app/ingress.py).
+exec python -m uvicorn main:app --host 0.0.0.0 --port "${PORT:-5880}" --workers 1 --no-proxy-headers

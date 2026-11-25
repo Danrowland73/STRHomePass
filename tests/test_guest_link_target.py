@@ -192,6 +192,7 @@ async def test_failure_keeps_the_last_good_answer_and_retries_sooner():
 # Dashboard rendering
 # ---------------------------------------------------------------------------
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_sidebar_dashboard_builds_links_on_the_mapped_port(client, test_db):
     fake = _supervisor(self_info=_self_info({"5880/tcp": 8443}), info=_info("cabin"))
     with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"), \
@@ -203,6 +204,7 @@ async def test_sidebar_dashboard_builds_links_on_the_mapped_port(client, test_db
     assert "guest-port-warning" not in resp.text
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_sidebar_dashboard_warns_when_the_port_is_disabled(client, test_db):
     fake = _supervisor(self_info=_self_info({"5880/tcp": None}))
     with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"), \
@@ -212,6 +214,7 @@ async def test_sidebar_dashboard_warns_when_the_port_is_disabled(client, test_db
     assert 'id="guest-port-warning"' in resp.text
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_guest_url_wins_and_skips_the_lookup(client, test_db):
     fake = _supervisor()
     with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"), \
@@ -255,6 +258,7 @@ def test_guest_url_with_port(url, expected):
     assert app.ingress.guest_url_with_port(url, 8443) == expected
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 @pytest.mark.parametrize("headers, session", [({"X-Ingress-Path": INGRESS_PREFIX}, False), ({}, True)])
 async def test_a_portless_guest_url_gets_the_published_port(
     client, test_db, admin_session, headers, session,
@@ -271,6 +275,7 @@ async def test_a_portless_guest_url_gets_the_published_port(
     assert 'const DIRECT_GUEST_BASE = "";' in resp.text
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_a_portless_guest_url_warns_when_the_port_is_disabled(client, test_db):
     fake = _supervisor(self_info=_self_info({"5880/tcp": None}))
     with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"), \

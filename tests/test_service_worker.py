@@ -182,6 +182,7 @@ async def test_the_worker_scope_covers_the_manifest_scope(
 # Ingress
 # ---------------------------------------------------------------------------
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_no_worker_is_registered_under_ingress(client, mock_ha_client, sample_token):
     """Under ingress the app is served from /api/hassio_ingress/<token>/, and a
     scope above that prefix is not something the browser would allow — so the
@@ -243,6 +244,7 @@ async def test_the_page_registers_the_worker_it_says_it_does(
 
 
 @pytest.mark.skipif(node is None, reason="node is not installed")
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_the_ingress_guard_really_skips_registration(
     client, mock_ha_client, sample_token
 ):

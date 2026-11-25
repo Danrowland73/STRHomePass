@@ -444,6 +444,7 @@ async def test_pending_stream_forwards_device_unbound(test_db, bound_token):
     await gen.aclose()
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_ingress_scopes_the_cookie_under_the_prefix(
     client, bound_token, mock_ha_client, monkeypatch
 ):

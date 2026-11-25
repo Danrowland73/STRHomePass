@@ -9,6 +9,12 @@ HomePass is a fork of [Rohithkadaveru/ha-pass](https://github.com/Rohithkadaveru
 unmaintained upstream since April 2026. Releases up to and including 0.2.4 are
 upstream's; 0.3.0 is the first release from this fork.
 
+## [1.6.4] - 2026-11-24
+
+### Security
+
+- **Fixed an admin login bypass on the add-on's direct port.** In add-on mode, any request carrying an `X-Ingress-Path` header was treated as coming from the Home Assistant sidebar, which is pre-authenticated, so it skipped the admin login. Anyone who could reach port 5880 (any device on the home network, or the internet if the port is forwarded) could add that header and get full admin access: create or change links, and so operate locks and anything else HomePass can reach. The header is now trusted only when the connection itself comes from the Supervisor's ingress proxy (`172.30.32.2`), checked against the TCP peer address and never against a header a client can write. Uvicorn's own proxy-header handling is turned off (`--no-proxy-headers`) so nothing can rewrite that address. **Update now.** Links created through the bypass would appear in the dashboard and in Recent activity. This was inherited from upstream HomePass.
+
 ## [1.6.3] - 2026-11-24
 
 ### Added

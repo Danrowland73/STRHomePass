@@ -551,6 +551,7 @@ async def test_schema_needs_key_or_admin(client, mock_ha_client, test_db, api_on
     assert (await client.get("/api/openapi.json", cookies=admin_session)).status_code == 200
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_schema_names_the_ingress_prefix(client, mock_ha_client, test_db, api_on):
     """Swagger resolves operations against `servers`; without the prefix, Try it
     out would hit Home Assistant's own /api instead of the add-on."""
@@ -600,6 +601,7 @@ async def test_docs_page_runs_under_the_normal_csp(client, mock_ha_client, test_
     assert all(u.endswith(f"?v={build.BUILD_VERSION}") for u in srcs), srcs
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_docs_page_under_ingress(client, mock_ha_client, test_db, api_on):
     with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "fake-supervisor-token"):
         resp = await client.get("/api/docs", headers={"X-Ingress-Path": INGRESS_PREFIX})
@@ -639,6 +641,7 @@ async def test_dashboard_links_to_docs_only_when_enabled(client, mock_ha_client,
     assert 'href="/api/docs"' in resp.text
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_dashboard_docs_link_carries_ingress_prefix(client, mock_ha_client, test_db, api_on):
     with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "fake-supervisor-token"):
         resp = await client.get("/admin/dashboard", headers={"X-Ingress-Path": INGRESS_PREFIX})

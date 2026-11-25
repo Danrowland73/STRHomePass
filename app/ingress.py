@@ -1,6 +1,7 @@
 """Ingress detection helpers.
 
-Only trust X-Ingress-Path when SUPERVISOR_TOKEN exists (add-on mode).
+Only trust X-Ingress-Path in add-on mode (SUPERVISOR_TOKEN set) and only from
+the Supervisor's ingress address (INGRESS_PEERS), checked against the TCP peer.
 This prevents header spoofing in standalone Docker deployments.
 """
 import logging
@@ -18,10 +19,30 @@ logger = logging.getLogger(__name__)
 _SUPERVISOR_TOKEN: str | None = os.environ.get("SUPERVISOR_TOKEN")
 
 
+# The Supervisor's ingress proxy always connects to an add-on from this address
+# on the internal hassio network; Home Assistant's add-on documentation tells
+# add-ons to accept ingress traffic from it alone.
+INGRESS_PEERS: frozenset[str] = frozenset({"172.30.32.2"})
+
+
 def get_ingress_path(request: Request) -> str:
+    """The sidebar's path prefix, for a request that really came through ingress.
+
+    An ingress request is pre-authenticated by Home Assistant, so being one
+    skips the admin login. The X-Ingress-Path header alone proves nothing:
+    anyone who can reach the add-on's published port can send it. So it is
+    trusted only from the Supervisor's own address, taken from the TCP peer
+    (request.client), never from a forwarded header a client can write.
+    """
     if not _SUPERVISOR_TOKEN:
         return ""
-    return request.headers.get("X-Ingress-Path", "")
+    path = request.headers.get("X-Ingress-Path", "")
+    if not path:
+        return ""
+    peer = request.client.host if request.client else None
+    if peer not in INGRESS_PEERS:
+        return ""
+    return path
 
 
 def is_ingress_request(request: Request) -> bool:

@@ -6,6 +6,8 @@ and logout sentinel safety.
 """
 from unittest.mock import patch
 
+import pytest
+
 import app.ingress
 from app import database as db
 
@@ -71,6 +73,7 @@ async def test_ingress_logout_does_not_delete_real_sessions(client, mock_ha_clie
 INGRESS_PREFIX = "/api/hassio_ingress/abc123"
 
 
+@pytest.mark.usefixtures("trusted_ingress")
 async def test_guest_pwa_api_calls_carry_the_ingress_prefix(
     client, mock_ha_client, sample_token
 ):
@@ -105,3 +108,48 @@ async def test_guest_pwa_api_calls_have_no_prefix_in_standalone_mode(
 
     assert resp.status_code == 200
     assert 'const BASE = ""' in resp.text
+
+
+
+# ---------------------------------------------------------------------------
+# A forged X-Ingress-Path in add-on mode
+# ---------------------------------------------------------------------------
+# In add-on mode the header used to be trusted from anyone, so any device that
+# could reach the published port (5880) became admin by sending it. It is now
+# only honoured from the Supervisor's ingress address.
+
+@pytest.mark.parametrize("path", ["/admin/tokens", "/admin/settings"])
+async def test_forged_ingress_header_is_not_admin(client, test_db, path):
+    with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"):
+        resp = await client.get(path, headers={"X-Ingress-Path": "/api/hassio_ingress/x"})
+    assert resp.status_code == 401
+
+
+async def test_forged_ingress_header_cannot_create_a_link(client, test_db):
+    with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"):
+        resp = await client.post(
+            "/admin/tokens", headers={"X-Ingress-Path": "/api/hassio_ingress/x"},
+            json={"label": "Intruder", "entity_ids": ["lock.front_door"], "expires_in_seconds": 3600},
+        )
+    assert resp.status_code == 401
+    assert await db.list_tokens() == []
+
+
+async def test_ingress_from_the_supervisor_is_still_admin(client, test_db):
+    import httpx
+    from main import app as asgi_app
+    transport = httpx.ASGITransport(app=asgi_app, client=("172.30.32.2", 51234))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as sv:
+        with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"):
+            resp = await sv.get("/admin/tokens", headers={"X-Ingress-Path": "/api/hassio_ingress/x"})
+    assert resp.status_code == 200
+
+
+async def test_forwarded_for_cannot_impersonate_the_supervisor(client, test_db):
+    """The peer is the TCP connection's, never a header the client writes."""
+    with patch.object(app.ingress, "_SUPERVISOR_TOKEN", "sv-token"):
+        resp = await client.get("/admin/tokens", headers={
+            "X-Ingress-Path": "/api/hassio_ingress/x",
+            "X-Forwarded-For": "172.30.32.2", "X-Real-IP": "172.30.32.2",
+        })
+    assert resp.status_code == 401

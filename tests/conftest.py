@@ -126,6 +126,20 @@ def mock_ha_client():
         yield mocks
 
 
+@pytest.fixture
+def trusted_ingress():
+    """Let the test client stand in for the Supervisor's ingress proxy.
+
+    X-Ingress-Path is only honoured from app.ingress.INGRESS_PEERS, and the
+    ASGI test client connects from 127.0.0.1. Tests of genuine sidebar
+    behaviour opt in with this; everything else keeps the real rule, so a
+    forged header from the test client is refused as it would be in the field.
+    """
+    from app import ingress
+    with patch.object(ingress, "INGRESS_PEERS", ingress.INGRESS_PEERS | {"127.0.0.1"}):
+        yield
+
+
 @pytest.fixture(autouse=True)
 def _reset_login_limiter():
     """Reset the admin login rate limiter between tests to prevent cross-test pollution.

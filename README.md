@@ -64,13 +64,14 @@ installs, just a link.
 1. Add this repository in **Settings → Add-ons → Add-on Store → ⋮ → Repositories**:
 
    ```
-   https://github.com/ljmerza/homepass
+   https://github.com/Danrowland73/STRHomePass
    ```
 
-2. Find **HomePass** in the store and click **Install**.
+2. Find **STRHomePass** in the store and click **Install**. Home Assistant
+   builds it from this repository, which takes a few minutes.
 3. Go to the **Configuration** tab and set your options.
 4. Start the add-on.
-5. Click **Open Web UI** or find HomePass in the HA sidebar.
+5. Click **Open Web UI** or find STRHomePass in the HA sidebar.
 
 Admin access works through the HA sidebar — no separate login needed. Guest
 links use the direct port (`http://<your-ha-ip>:5880/g/{slug}`) so visitors
@@ -83,7 +84,9 @@ followed automatically.
 ```yaml
 services:
   homepass:
-    image: ghcr.io/ljmerza/homepass:latest
+    # No prebuilt image is published for this fork; Compose builds it from
+    # the repository.
+    build: https://github.com/Danrowland73/STRHomePass.git
     restart: unless-stopped
     ports:
       - 5880:5880
@@ -103,6 +106,7 @@ docker compose up -d
 ### Docker Run
 
 ```bash
+docker build -t strhomepass https://github.com/Danrowland73/STRHomePass.git
 docker run -d --restart unless-stopped \
   -p 5880:5880 \
   -v ./data:/data \
@@ -110,7 +114,7 @@ docker run -d --restart unless-stopped \
   -e ADMIN_PASSWORD=changeme \
   -e HA_BASE_URL=http://homeassistant.local:8123 \
   -e HA_TOKEN=your_long_lived_token_here \
-  ghcr.io/ljmerza/homepass:latest
+  strhomepass
 ```
 
 The admin dashboard is at `http://localhost:5880/admin/dashboard`.

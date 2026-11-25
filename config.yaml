@@ -1,6 +1,6 @@
-name: HomePass
+name: STRHomePass
 version: "1.6.0"
-slug: homepass
+slug: strhomepass
 description: Shareable guest links for controlling Home Assistant devices
 url: "https://github.com/Danrowland73/STRHomePass"
 arch: [amd64, aarch64]
@@ -10,7 +10,7 @@ homeassistant_api: true
 ingress: true
 ingress_port: 5880
 panel_icon: "mdi:shield-key"
-panel_title: "HomePass"
+panel_title: "STRHomePass"
 webui: "http://[HOST]:[PORT:5880]/admin/dashboard"
 ports:
   "5880/tcp": 5880

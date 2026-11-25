@@ -13,7 +13,11 @@ upstream's; 0.3.0 is the first release from this fork.
 
 ### Added
 
-- **Apple Home-style dimmers in the iOS look.** In the iOS page style, dimmable lights now look like any other light tile, showing "On · 78%". Tapping the bulb icon turns the light on or off. Tapping anywhere else on the tile opens a full-screen dimmer with a tall vertical slider: drag up or down and the light follows as you drag, with 0% turning it off. The dimmer also has a power button, a color button (when color controls are allowed for that light) and **Done**, and closes on a tap outside or Escape. It works with a keyboard and screen readers (arrow keys 5%, Page Up/Down 10%, Home/End). Updates sent while dragging are spaced at least 350 ms apart, well within the link's rate limit, and the final position is always sent. The Standard and Android looks keep the inline slider.
+- **Home-app-style dimmers in the iOS and Android looks.** In the iOS and Android page styles, dimmable lights now look like any other light tile, showing "On · 78%". Tapping the bulb icon turns the light on or off. Tapping anywhere else on the tile opens a full-screen dimmer with a tall vertical slider: drag up or down and the light follows as you drag, with 0% turning it off. The dimmer also has a power button, a color button (when color controls are allowed for that light) and **Done**, and closes on a tap outside or Escape. It works with a keyboard and screen readers (arrow keys 5%, Page Up/Down 10%, Home/End). Updates sent while dragging are spaced at least 350 ms apart, well within the link's rate limit, and the final position is always sent. Fans that set speeds work the same way: the fan icon turns the fan on or off, and the slider sets its speed, snapping to the speeds the fan actually has (a three-speed fan stops at 33%, 67% and 100%), with 0% turning it off. Fans without speed control stay plain on/off tiles. The Android look uses the same dimmer in Material 3 colors taken from the link's primary color. The Standard look keeps the inline sliders.
+
+### Fixed
+
+- **A fan without speed control no longer redraws its card on every update from Home Assistant.** That caused a flicker and a pulse animation each time.
 
 ## [1.6.2] - 2026-11-24
 

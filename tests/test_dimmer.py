@@ -131,3 +131,73 @@ async def test_guest_page_carries_the_dimmer(client, sample_token, mock_ha_clien
     html = (await client.get("/g/test-token")).text
     assert 'id="dimmer-backdrop"' in html
     assert 'id="dimmer-track" class="dimmer-track" role="slider" tabindex="0"' in html
+
+
+# ---------------------------------------------------------------------------
+# Fans, and the Android look
+# ---------------------------------------------------------------------------
+
+FAN = """
+const fan = (state, attrs) => ({ entity_id: 'fan.x', state, attributes: { friendly_name: 'Ceiling Fan', ...attrs } });
+// supported_features bit 1 is SET_SPEED; a three-speed fan steps by 33.33.
+const SPEEDS = { supported_features: 1, percentage_step: 100 / 3 };
+"""
+
+
+@pytest.mark.parametrize("skin", ["ios", "android"])
+async def test_a_speed_fan_is_a_dimmer_tile_in_both_phone_looks(client, sample_token, mock_ha_client, skin):
+    out = await _guest(client, SEED + FAN + f"""
+    document.documentElement.dataset.skin = '{skin}';
+    console.log(JSON.stringify({{
+      speed: buildCard('fan.x', fan('on', {{ ...SPEEDS, percentage: 67 }})),
+      plain: buildCard('fan.x', fan('on', {{ supported_features: 0 }})),
+      light: buildCard('light.x', light('off', DIM)),
+    }}));
+    """)
+    s = out["speed"]
+    assert "data-tile" in s and 'data-action="open-dimmer"' in s
+    assert 'aria-label="Ceiling Fan: Fan speed"' in s
+    assert 'data-action="shape-toggle"' in s and 'data-domain="fan"' in s
+    assert 'data-range-action="fan-speed"' not in s
+    assert "On · 67%" in s
+    # A fan with no speeds stays a plain on/off tile.
+    assert 'data-action="card-toggle"' in out["plain"] and "open-dimmer" not in out["plain"]
+    # Lights behave the same in both looks.
+    assert 'data-action="open-dimmer"' in out["light"]
+
+
+async def test_standard_look_keeps_the_fan_slider(client, sample_token, mock_ha_client):
+    out = await _guest(client, SEED + FAN + """
+    console.log(JSON.stringify(buildCard('fan.x', fan('on', { ...SPEEDS, percentage: 67 }))));
+    """)
+    assert 'data-range-action="fan-speed"' in out and "open-dimmer" not in out
+
+
+async def test_fan_dimmer_sets_speed_in_the_fans_own_steps(client, sample_token, mock_ha_client):
+    out = await _guest(client, SEED + FAN + """
+    document.documentElement.dataset.skin = 'android';
+    states = { 'fan.x': fan('on', { ...SPEEDS, percentage: 33 }) };
+    openDimmer('fan.x');
+    const opened = { pct: dimmer.pct, icon: document.getElementById('dimmer-icon').textContent };
+    setDimmer(58);          // nearest speed is 2 of 3: 67%
+    const snapped = dimmer.pct;
+    closeDimmer();
+    openDimmer('fan.x');
+    setDimmer(10);          // nearest is 0: off
+    closeDimmer();
+    tap({ action: 'open-dimmer', eid: 'fan.x' });
+    tap({ action: 'dimmer-power' });
+    console.log(JSON.stringify({ opened, snapped, sent }));
+    """)
+    assert out["opened"] == {"pct": 33, "icon": "mode_fan"}
+    assert out["snapped"] == 67
+    assert out["sent"][0] == ["fan.x", "fan.set_percentage", {"percentage": 67}]
+    assert out["sent"][1] == ["fan.x", "fan.set_percentage", {"percentage": 0}]
+    # The power button toggles the fan, not a light.
+    assert out["sent"][2][:2] == ["fan.x", "fan.turn_off"]
+
+
+async def test_android_look_styles_the_dimmer(client, sample_token, mock_ha_client):
+    css = (await client.get("/static/skins.css")).text
+    assert 'html[data-skin="android"] .dimmer-fill { background: var(--md-primary-container); }' in css
+    assert 'html[data-skin="android"] .dimmer-btn.dimmer-done' in css

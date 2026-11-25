@@ -274,3 +274,27 @@ html[data-skin="android"] [data-action="group-by"][aria-pressed="true"] {
   color: var(--md-on-primary-container);
   box-shadow: none;
 }
+
+/* ── Dimmer (both looks) ───────────────────────────────────────────────
+   The tall slider a dimmable light's or a fan's tile opens. Its base shape is
+   in guest_pwa.html; the iOS look keeps that white-on-glass default, and the
+   Android look recolours it with Material 3 tones of the link's primary. */
+html[data-skin="android"] #dimmer-backdrop { background: rgba(0, 0, 0, .6); }
+html[data-skin="android"] .dimmer-track {
+  border-radius: 28px;
+  background: rgba(255, 255, 255, .14);
+}
+html[data-skin="android"] .dimmer-fill { background: var(--md-primary-container); }
+html[data-skin="android"] .dimmer-icon { color: var(--md-on-primary-container); }
+html[data-skin="android"] .dimmer-track[aria-valuenow="0"] .dimmer-icon { color: rgba(255, 255, 255, .7); }
+html[data-skin="android"] .dimmer-btn {
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .14);
+  color: #fff;
+  font-weight: 500;
+}
+html[data-skin="android"] .dimmer-btn.dimmer-on {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+html[data-skin="android"] .dimmer-btn.dimmer-done { background: var(--md-primary); color: #fff; }

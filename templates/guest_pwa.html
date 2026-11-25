@@ -528,7 +528,7 @@ applyStoredInfoState();
     <div id="dimmer-track" class="dimmer-track" role="slider" tabindex="0"
       aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="dimmer-title">
       <div id="dimmer-fill" class="dimmer-fill"></div>
-      <span aria-hidden="true" class="dimmer-icon material-symbols-outlined">lightbulb</span>
+      <span aria-hidden="true" id="dimmer-icon" class="dimmer-icon material-symbols-outlined">lightbulb</span>
     </div>
     <div class="flex items-center gap-4 mt-2">
       <button type="button" data-action="dimmer-power" id="dimmer-power" class="dimmer-btn">
@@ -1125,7 +1125,7 @@ function buildCard(eid, state) {
   else if (domain === 'lock') controls = buildLockControls(eid, state);
   else if (domain === 'media_player') controls = buildMediaControls(eid, state);
   else if (domain === 'cover') controls = buildCoverControls(eid, state);
-  else if (domain === 'fan') controls = buildFanControls(eid, state);
+  else if (domain === 'fan') controls = dimmerTile ? '' : buildFanControls(eid, state);
   else if (domain === 'alarm_control_panel') controls = buildAlarmControls(eid, state);
   else if (domain === 'button' || domain === 'input_button') controls = buildPressControls(eid, domain);
   else if (domain === 'counter') controls = buildCounterControls(eid, state);
@@ -1159,7 +1159,7 @@ function buildCard(eid, state) {
   // The whole tile is the hit target for anything with a toggle; domains with
   // their own controls (climate, lock, cover, media, camera) are left alone.
   const cardTap = dimmerTile
-    ? `data-action="open-dimmer" data-eid="${esc(eid)}" role="button" tabindex="0" aria-haspopup="dialog" aria-label="${esc(name)}: ${esc(tr('light.brightness'))}" `
+    ? `data-action="open-dimmer" data-eid="${esc(eid)}" role="button" tabindex="0" aria-haspopup="dialog" aria-label="${esc(name)}: ${esc(tr(domain === 'fan' ? 'fan.speed' : 'light.brightness'))}" `
     : hasToggle
     ? `data-action="card-toggle" data-eid="${esc(eid)}" data-domain="${domain}" role="button" tabindex="0" aria-label="${esc(tr('card.toggle', { name }))}" `
     : hasHistory
@@ -1560,17 +1560,41 @@ function brightnessPct(state) {
   return Math.round((brightness / 255) * 100);
 }
 
-// ── Dimmer (iOS look) ────────────────────────────────────────────────
-// Dimmable lights as plain tiles, as the phone's own home app draws them. Only
-// the iOS look does this; every other look keeps the inline slider.
-const DIMMER_SKINS = ['ios'];
+// ── Dimmer (iOS and Android looks) ───────────────────────────────────
+// Dimmable lights and speed-controlled fans as plain tiles, as a phone's own
+// home app draws them: the icon toggles, the rest of the tile opens a tall
+// slider (brightness for a light, speed for a fan). The standard look keeps
+// the inline sliders.
+const DIMMER_SKINS = ['ios', 'android'];
 const DIMMER_THROTTLE_MS = 350;   // live updates while dragging, well under the rate limit
 const DIMMER_ECHO_GRACE_MS = 1200; // ignore HA's echoes of our own drag for this long
 const dimmer = { eid: null, pct: 0, dragging: false, lastSent: 0, sentPct: null, timer: null, touchedAt: 0 };
 
 function usesDimmerTile(eid, state) {
-  return eid.startsWith('light.') && DIMMER_SKINS.includes(document.documentElement.dataset.skin)
-    && showsBrightness(eid, state);
+  if (!DIMMER_SKINS.includes(document.documentElement.dataset.skin)) return false;
+  if (eid.startsWith('light.')) return showsBrightness(eid, state);
+  if (eid.startsWith('fan.')) return fanSupportsSpeed(state);
+  return false;
+}
+
+// Bit 1 of HA's FanEntityFeature is SET_SPEED (a percentage). Reported on or
+// off, so an off fan is still recognised; an unavailable one reports nothing.
+function fanSupportsSpeed(state) {
+  return (Number(state?.attributes?.supported_features) & 1) !== 0;
+}
+
+// The slider's value for either kind: brightness or speed, 0 while off.
+function dimmerPct(eid, state) {
+  if (eid.startsWith('fan.')) return state.state === 'on' ? Math.round(Number(state.attributes?.percentage) || 0) : 0;
+  return brightnessPct(state);
+}
+
+// A fan's speeds come in steps (a three-speed fan is 33.33...); snapping to
+// one keeps the slider on a speed the fan really has.
+function dimmerSnap(eid, pct) {
+  if (!eid.startsWith('fan.')) return pct;
+  const step = Number(states[eid]?.attributes?.percentage_step) || 1;
+  return Math.min(100, Math.round(Math.round(pct / step) * step));
 }
 
 function openDimmer(eid) {
@@ -1582,8 +1606,10 @@ function openDimmer(eid) {
   dimmer.touchedAt = 0;
   document.getElementById('dimmer-title').textContent = displayName(eid, state);
   document.getElementById('dimmer-power').setAttribute('aria-label', tr('card.toggle', { name: displayName(eid, state) }));
-  document.getElementById('dimmer-color').classList.toggle('hidden', !showsColorControls(eid, state));
-  renderDimmer(brightnessPct(state), state.state === 'on');
+  const isLight = eid.startsWith('light.');
+  document.getElementById('dimmer-color').classList.toggle('hidden', !(isLight && showsColorControls(eid, state)));
+  document.getElementById('dimmer-icon').textContent = isLight ? 'lightbulb' : 'mode_fan';
+  renderDimmer(dimmerPct(eid, state), state.state === 'on');
   const backdrop = document.getElementById('dimmer-backdrop');
   backdrop.classList.remove('hidden');
   backdrop.classList.add('flex');
@@ -1618,12 +1644,12 @@ function renderDimmer(pct, on) {
 // is of a value the guest has already moved past.
 function syncDimmer(state) {
   if (dimmer.dragging || Date.now() - dimmer.touchedAt < DIMMER_ECHO_GRACE_MS) return;
-  renderDimmer(brightnessPct(state), state.state === 'on');
+  renderDimmer(dimmerPct(dimmer.eid, state), state.state === 'on');
 }
 
 // Live while dragging, throttled; the last value always goes out.
 function setDimmer(pct) {
-  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  pct = dimmerSnap(dimmer.eid, Math.max(0, Math.min(100, Math.round(pct))));
   dimmer.touchedAt = Date.now();
   renderDimmer(pct, pct > 0);
   clearTimeout(dimmer.timer);
@@ -1637,7 +1663,9 @@ function flushDimmer() {
   if (!dimmer.eid || dimmer.sentPct === dimmer.pct || dimmer.touchedAt === 0) return;
   dimmer.sentPct = dimmer.pct;
   dimmer.lastSent = Date.now();
-  sendBrightness(dimmer.eid, dimmer.pct);  // 0 turns the light off
+  // 0 turns either off: light.turn_on at brightness 0, fan.set_percentage at 0.
+  if (dimmer.eid.startsWith('fan.')) sendCmd(dimmer.eid, 'fan', 'set_percentage', { percentage: dimmer.pct });
+  else sendBrightness(dimmer.eid, dimmer.pct);
 }
 
 function dimmerPctAt(clientY) {
@@ -2231,10 +2259,15 @@ function updateFanCard(eid, state, card) {
     toggle.setAttribute('aria-checked', String(on));
   }
 
+  if (dimmer.eid === eid) syncDimmer(state);
   const sliderSection = card.querySelector('[data-slider-section]');
-  const hasSlider = sliderSection && sliderSection.querySelector('input[type=range]');
+  const hasSlider = Boolean(sliderSection && sliderSection.querySelector('input[type=range]'));
+  // Only a fan that sets speeds draws the inline slider, and a dimmer tile
+  // never does; comparing against that keeps a fan without one from being
+  // rebuilt on every update.
+  const wantsSlider = on && fanSupportsSpeed(state) && !usesDimmerTile(eid, state);
 
-  if ((on && !hasSlider) || (!on && hasSlider)) {
+  if (hasSlider !== wantsSlider) {
     const parent = card.parentElement;
     const newCard = document.createElement('div');
     newCard.innerHTML = buildCard(eid, state);
@@ -2246,7 +2279,7 @@ function updateFanCard(eid, state, card) {
       void freshCard.offsetWidth;
       freshCard.classList.add('pulse');
     }
-  } else if (on && hasSlider) {
+  } else if (hasSlider) {
     const pct = state.attributes?.percentage ?? 0;
     const slider = document.getElementById(`fan-${cssId(eid)}`);
     if (slider) {
@@ -3126,7 +3159,7 @@ document.addEventListener('click', e => {
     case 'dimmer-dialog':
       break;  // a tap on the dialog's own background is not a tap on the backdrop
     case 'dimmer-power':
-      if (dimmer.eid) { sendToggle(dimmer.eid, 'light'); dimmer.touchedAt = 0; }
+      if (dimmer.eid) { sendToggle(dimmer.eid, dimmer.eid.split('.')[0]); dimmer.touchedAt = 0; }
       break;
     case 'dimmer-color': {
       const target = dimmer.eid;
